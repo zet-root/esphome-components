@@ -1,0 +1,21 @@
+
+Related Github:
+- Mark mqtt as unavailable on rp2040: https://github.com/esphome/esphome/pull/4025/files
+- Subsequent feature request for MQTT: https://github.com/esphome/feature-requests/issues/1966
+- failed implementation (webserver + mqtt): https://github.com/esphome/esphome/pull/5305
+- failed implementation (webserver + mqtt): https://github.com/esphome/esphome/pull/5998  (revised code of 5305)
+- failed implementation (mqtt only): https://github.com/esphome/esphome/pull/6907
+- UNRELATED: make MQTT with large pack sizes: https://github.com/esphome/feature-requests/issues/811
+- UNRELATED: Simply referenced with the webserver: https://github.com/esphome/esphome/pull/8867
+- UNRELATED: W5500 support: https://github.com/esphome/feature-requests/issues/2810
+
+# this is the esphome of the one that wrote 5998:
+- https://github.com/esphome/esphome/pull/5998
+- https://github.com/esphome/esphome/compare/dev...LorbusChris:esphome:rp2040
+
+# New things:
+- AsyncTCP is merged into esphome by default! => no need to do that in rp2040 anymore!
+
+libraries:
+  - https://github.com/HeMan/async-mqtt-client.git
+  - https://github.com/khoih-prog/AsyncTCP_RP2040W.git#1.2.0

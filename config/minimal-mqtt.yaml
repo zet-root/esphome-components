@@ -1,0 +1,40 @@
+esphome:
+  name: minimal-mqtt
+  friendly_name: Pico MQTT
+  libraries:
+    - heman/AsyncMqttClient-esphome@2.0.0
+    - khoih-prog/AsyncTCP_RP2040W@1.2.0
+  platformio_options:
+    lib_ldf_mode: deep+
+    lib_compat_mode: soft
+
+rp2040:
+  board: rpipicow
+
+logger:
+
+api:
+
+ota:
+  platform: esphome
+
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+  ap:
+    ssid: "minimal-mqtt-fallback"
+    password: "FALLBACK_AP_PASSWORD"
+
+mqtt:
+  broker: "192.168.x.x"
+  port: 1883
+  birth_message:
+    topic: myavailability/topic
+    payload: online
+  will_message:
+    topic: myavailability/topic
+    payload: offline
+
+external_components:
+  - source: github://zet-root/esphome-components@main
+    components: [ mqtt ]

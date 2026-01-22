@@ -1,0 +1,56 @@
+esphome:
+  name: minimal-dht
+  friendly_name: Minimal DHT
+
+rp2040:
+  board: rpipicow
+
+# Enable logging
+logger:
+
+# Enable Home Assistant API
+api:
+
+ota:
+  platform: esphome
+
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+
+  # Enable fallback hotspot in case wifi connection fails
+  ap:
+    ssid: "minimal-dht-fallback"
+    password: "FALLBACK_AP_PASSWORD"
+
+# Optional: power/control pin (example)
+switch:
+  - platform: gpio
+    name: "GPIO8 Switch"
+    pin: GPIO08
+    id: GPIO08_switch
+    internal: true
+    restore_mode: ALWAYS_ON
+
+sensor:
+  - platform: dht
+    model: DHT22
+    pin:
+      number: GPIO7
+      mode: INPUT_PULLUP  # Enable pull-up resistor
+    temperature:
+      name: "Temperature"
+      id: air_temperature
+    humidity:
+      name: "Humidity"
+      id: relative_humidity
+    update_interval: 10s
+
+  - platform: absolute_humidity
+    name: Absolute Humidity
+    temperature: air_temperature
+    humidity: relative_humidity
+
+external_components:
+  - source: github://zet-root/esphome-components@main
+    components: [ dht ]

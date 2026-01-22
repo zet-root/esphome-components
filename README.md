@@ -1,0 +1,63 @@
+# ESPHome Components (RP2040 Focused)
+
+
+A small collection of custom **ESPHome external components** for use in your ESPHome projects.
+
+I run most of my ESPHome devices with RP2040 / PicoW boards. However they do not seem to get the same attention from ESPHome compared to ESP modules...
+
+Currently included:
+
+- **`dht`** – DHT sensor support (example: DHT22 on RP2040 / Pico W)
+- **`mqtt`** – MQTT component setup for RP2040/Pico W using async libraries
+
+---
+
+## Install / Use in ESPHome
+
+Add this to your ESPHome YAML:
+
+```yaml
+external_components:
+  - source: github://zet-root/esphome-components@main
+    components: [ dht, mqtt ]
+```
+
+
+---
+
+## Component: `dht`
+
+Minimal example for **DHT22** on **Raspberry Pi Pico W (RP2040)**.  
+This example also includes an `absolute_humidity` sensor derived from the DHT readings.
+
+I added a fix for my DHT sensor, so it would work with a RP2040. I even tried to upstream this: https://github.com/esphome/esphome/issues/10364
+
+[Minimal DHT Example Yaml](config/minimal-dht.yaml)
+
+### Notes
+- `INPUT_PULLUP` enables an internal pull-up resistor on the data pin.
+- Adjust `update_interval` to fit your needs.
+- Ensure your DHT sensor wiring is correct (power, ground, data pin). On the PicoW this can be used to solder a 4-wire Sensor directly onto the Pin, such that GND, VCC and Data aligns. I have this always on pin, cause it is my VCC.
+
+---
+
+## Component: `mqtt`
+
+Minimal example MQTT configuration for **Pico W (RP2040)** using async networking libraries.
+
+MQTT is missing in ESPHome as of now, for the RP2040. So I tried to make that happen for the newest version. It is not as complex as you would think.
+
+[Minimal MQTT Example Yaml](config/minimal-mqtt.yaml)
+
+### Notes
+- Replace `192.168.x.x` with your broker IP/hostname.
+- `birth_message` and `will_message` are useful for availability / LWT style monitoring.
+
+---
+
+## Development
+
+PRs and issues are welcome. If you add a new component, consider including:
+- a minimal YAML example
+- any required libraries / `platformio_options`
+- tested boards / chipsets

@@ -1,0 +1,4 @@
+
+I opened an issue... they closed it as they think it is resolved.... well it is not!
+
+https://github.com/esphome/esphome/issues/10364
