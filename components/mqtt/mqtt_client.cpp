@@ -139,6 +139,9 @@ void MQTTClientComponent::send_device_info_() {
 #ifdef USE_LIBRETINY
         root[ESPHOME_F("platform")] = lt_cpu_get_model_name();
 #endif
+#ifdef USE_RP2040
+        root["platform"] = "RP2040";
+#endif
 
         root[ESPHOME_F("board")] = ESPHOME_BOARD;
 #if defined(USE_WIFI)
