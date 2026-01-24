@@ -19,8 +19,6 @@
 #include "mqtt_backend_esp8266.h"
 #elif defined(USE_LIBRETINY)
 #include "mqtt_backend_libretiny.h"
-#elif defined(USE_RP2040)
-#include "mqtt_backend_rp2040.h"
 #endif
 #include "lwip/ip_addr.h"
 
@@ -231,9 +229,6 @@ class MQTTClientComponent : public Component
   bool publish(const std::string &topic, const char *payload, size_t payload_length, uint8_t qos = 0,
                bool retain = false);
 
-  /// Publish directly without creating MQTTMessage (avoids heap allocation for topic)
-  bool publish(const char *topic, const char *payload, size_t payload_length, uint8_t qos = 0, bool retain = false);
-
   /** Construct and send a JSON MQTT message.
    *
    * @param topic The topic.
@@ -241,9 +236,6 @@ class MQTTClientComponent : public Component
    * @param retain Whether to retain the message.
    */
   bool publish_json(const std::string &topic, const json::json_build_t &f, uint8_t qos = 0, bool retain = false);
-
-  /// Publish JSON directly without heap allocation for topic
-  bool publish_json(const char *topic, const json::json_build_t &f, uint8_t qos = 0, bool retain = false);
 
   /// Setup the MQTT client, registering a bunch of callbacks and attempting to connect.
   void setup() override;
@@ -342,8 +334,6 @@ class MQTTClientComponent : public Component
   MQTTBackendESP8266 mqtt_backend_;
 #elif defined(USE_LIBRETINY)
   MQTTBackendLibreTiny mqtt_backend_;
-#elif defined(USE_RP2040)
-  MQTTBackendRP2040 mqtt_backend_;
 #endif
 
   MQTTClientState state_{MQTT_CLIENT_DISABLED};
