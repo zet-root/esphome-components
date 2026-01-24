@@ -22,6 +22,15 @@ external_components:
     components: [ dht, mqtt ]
 ```
 
+I publish my fixes for some versions of ESPHome only, so please make sure to be on that version to have a working patch!
+
+```yaml
+external_components:
+  - source: github://zet-root/esphome-components@zet-2026.1.0
+    components: [ dht, mqtt ]
+```
+
+Have a look at all tags starting with "zet-" to see the full list.
 
 ---
 
