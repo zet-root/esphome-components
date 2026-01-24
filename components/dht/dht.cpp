@@ -79,7 +79,9 @@ bool HOT IRAM_ATTR DHT::read_sensor_(float *temperature, float *humidity, bool r
   uint8_t data[5] = {0, 0, 0, 0, 0};
 
 #ifndef USE_ESP32
+#ifndef USE_RP2040
   this->pin_.pin_mode(gpio::FLAG_OUTPUT);
+#endif
 #endif
   this->pin_.digital_write(false);
 
