@@ -250,19 +250,30 @@ def format_patch_stack(base_commit: str, outdir: str, src_dir: str) -> List[str]
     """
     Creates patch files for base_commit..HEAD and returns them sorted.
     Excludes version metadata commits (those with "Update versions" in message).
+    Also excludes infrastructure/tool commits (those modifying tools/, .github/, or .versions.yml).
     Returns an empty list if there are no custom patches (just metadata commits).
     """
     run(["git", "-C", src_dir, "format-patch", f"{base_commit}..HEAD", "-o", outdir])
     patches = sorted(glob.glob(os.path.join(outdir, "*.patch")))
     
-    # Filter out version metadata commits - they should only be on main, not replayed
+    # Filter out version metadata commits and infrastructure changes
     filtered_patches = []
     for patch in patches:
         with open(patch, 'r', encoding="utf-8") as f:
             content = f.read()
             # Skip version update commits
-            if "Update versions:" not in content and "Also updates README" not in content:
-                filtered_patches.append(patch)
+            if "Update versions:" in content or "Also updates README" in content:
+                continue
+            # Skip infrastructure/tool commits (tools/, .github/, .versions.yml)
+            if any(skip in content for skip in [
+                "tools/esphome_release.py",
+                "tools/",
+                ".github/",
+                ".versions.yml",
+                "update_readme_badges.py"
+            ]):
+                continue
+            filtered_patches.append(patch)
     
     return filtered_patches
 
