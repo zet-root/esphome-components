@@ -63,7 +63,7 @@ jobs:
           CI_CONFIG="ci/${CONFIG_BASENAME}"
           cp "${{ matrix.config }}" "$CI_CONFIG"
           # Replace external component source with local path for CI.
-          sed -i "s|source: github://[^ ]*|source: ${COMPONENTS_DIR}|g" "$CI_CONFIG"
+          sed -i "s|source: github://[^ ]*|source: ${COMPONENTS_DIR}/components|g" "$CI_CONFIG"
           cat > "ci/secrets.yaml" <<'EOF'
           wifi_ssid: "ci"
           wifi_password: "ci-password"
