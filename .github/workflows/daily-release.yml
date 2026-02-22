@@ -29,7 +29,7 @@ jobs:
 
       - name: Run release automation
         run: |
-          python3 tools/esphome_release.py run
+          python3 tools/esphome_release.py detect --auto-create --continue-on-error --push 
 
       - name: Push changes
         if: success()
