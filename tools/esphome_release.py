@@ -305,55 +305,66 @@ def format_patch_stack(base_commit: str, outdir: str, src_dir: str) -> tuple[Lis
     return component_patches, infra_patches
 
 
-def apply_patches(patches: List[str], src_dir: str) -> None:
+def apply_patches(
+    patches: List[str],
+    src_dir: str,
+    *,
+    allow_skip_infra_conflicts: bool = False,
+) -> None:
     # Use 3-way apply to reduce conflicts when upstream context shifts slightly.
     if not patches:
         return
 
-    cmd = ["git", "-C", src_dir, "am", "--3way"] + patches
-    try:
-        run(cmd)
-    except subprocess.CalledProcessError:
-        print("\nPatch apply failed.", file=sys.stderr)
+    for patch in patches:
+        cmd = ["git", "-C", src_dir, "am", "--3way", patch]
+        try:
+            run(cmd)
+        except subprocess.CalledProcessError:
+            print("\nPatch apply failed.", file=sys.stderr)
 
-        diff_output = run(
-            ["git", "-C", src_dir, "diff", "--name-only", "--diff-filter=U"],
-            capture=True,
-        )
-        conflicted_files = [f for f in diff_output.split("\n") if f]
-
-        if not conflicted_files:
-            print("Could not identify conflicted files. Manual resolution required.", file=sys.stderr)
-            print("\nResolve conflicts, then run:\n  git am --continue\nOr abort with:\n  git am --abort\n", file=sys.stderr)
-            sys.exit(2)
-
-        print(f"Found {len(conflicted_files)} conflicted file(s):", file=sys.stderr)
-        for f in conflicted_files:
-            print(f"  - {f}", file=sys.stderr)
-
-        if "README.md" in conflicted_files:
-            print("\nAttempting to auto-resolve README.md by regenerating badges...", file=sys.stderr)
-            try:
-                run(["git", "-C", src_dir, "checkout", "--theirs", "README.md"], check=False)
-                update_readme_badges(src_dir)
-                run(["git", "-C", src_dir, "add", "README.md"])
-                conflicted_files = [f for f in conflicted_files if f != "README.md"]
-                print("Successfully resolved README.md", file=sys.stderr)
-            except Exception as e:
-                print(f"Failed to auto-resolve README.md: {e}", file=sys.stderr)
-
-        if conflicted_files:
-            print(
-                "\nRemaining conflicts require manual resolution:\n"
-                "  git am --continue    (to continue after resolving)\n"
-                "  git am --skip        (to skip current patch)\n"
-                "  git am --abort       (to cancel the entire operation)\n",
-                file=sys.stderr,
+            diff_output = run(
+                ["git", "-C", src_dir, "diff", "--name-only", "--diff-filter=U"],
+                capture=True,
             )
-            sys.exit(2)
+            conflicted_files = [f for f in diff_output.split("\n") if f]
 
-        print("\nContinuing patch application...", file=sys.stderr)
-        run(["git", "-C", src_dir, "am", "--continue"])
+            if not conflicted_files:
+                print("Could not identify conflicted files. Manual resolution required.", file=sys.stderr)
+                print("\nResolve conflicts, then run:\n  git am --continue\nOr abort with:\n  git am --abort\n", file=sys.stderr)
+                sys.exit(2)
+
+            print(f"Found {len(conflicted_files)} conflicted file(s):", file=sys.stderr)
+            for f in conflicted_files:
+                print(f"  - {f}", file=sys.stderr)
+
+            if allow_skip_infra_conflicts and all(_is_infra_path(f) for f in conflicted_files):
+                print("Skipping infra-only patch due to conflicts.", file=sys.stderr)
+                run(["git", "-C", src_dir, "am", "--skip"], check=False)
+                continue
+
+            if "README.md" in conflicted_files:
+                print("\nAttempting to auto-resolve README.md by regenerating badges...", file=sys.stderr)
+                try:
+                    run(["git", "-C", src_dir, "checkout", "--theirs", "README.md"], check=False)
+                    update_readme_badges(src_dir)
+                    run(["git", "-C", src_dir, "add", "README.md"])
+                    conflicted_files = [f for f in conflicted_files if f != "README.md"]
+                    print("Successfully resolved README.md", file=sys.stderr)
+                except Exception as e:
+                    print(f"Failed to auto-resolve README.md: {e}", file=sys.stderr)
+
+            if conflicted_files:
+                print(
+                    "\nRemaining conflicts require manual resolution:\n"
+                    "  git am --continue    (to continue after resolving)\n"
+                    "  git am --skip        (to skip current patch)\n"
+                    "  git am --abort       (to cancel the entire operation)\n",
+                    file=sys.stderr,
+                )
+                sys.exit(2)
+
+            print("\nContinuing patch application...", file=sys.stderr)
+            run(["git", "-C", src_dir, "am", "--continue"])
 
 
 def update_readme_badges(src_dir: str) -> None:
@@ -633,7 +644,7 @@ def cmd_release(args: argparse.Namespace) -> None:
         import_components_from_upstream(upstream_tag, comps, src_dir)
         commit_import(upstream_tag, comps, src_dir)
         apply_patches(component_patches, src_dir)
-        apply_patches(infra_patches, src_dir)
+        apply_patches(infra_patches, src_dir, allow_skip_infra_conflicts=True)
     create_annotated_tag(
         full_tag,
         f"External components for ESPHome {full_tag}",
