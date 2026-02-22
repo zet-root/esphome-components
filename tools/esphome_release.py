@@ -43,7 +43,7 @@ VERSIONS_FILE = ".versions.yml"
 
 IMPORT_COMMIT_PREFIX = "Import ESPHome "
 INFRA_PATH_PREFIXES = ("tools/", ".github/")
-INFRA_PATHS = ("tools/update_readme_badges.py",)
+INFRA_PATHS = ("tools/update_readme_badges.py", "README.md")
 RELEASE_BRANCH_PREFIX = "release/zet-"
 RELEASE_TAG_PREFIX = "zet-"
 
