@@ -160,7 +160,6 @@ def release_tag_name(version: str) -> str:
 def cleanup_legacy_release(version: str, src_dir: str, push: bool = False) -> None:
     """Remove legacy non-zet release branch/tag variants if present."""
     legacy_branch = f"release/{version}"
-    legacy_tag = version
 
     legacy_branch_exists = run(
         ["git", "-C", src_dir, "branch", "--list", legacy_branch],
@@ -171,14 +170,7 @@ def cleanup_legacy_release(version: str, src_dir: str, push: bool = False) -> No
         if push:
             run(["git", "-C", src_dir, "push", "origin", "--delete", legacy_branch], check=False)
 
-    legacy_tag_exists = run(
-        ["git", "-C", src_dir, "tag", "--list", legacy_tag],
-        capture=True,
-    ).strip()
-    if legacy_tag_exists:
-        run(["git", "-C", src_dir, "tag", "-d", legacy_tag], check=False)
-        if push:
-            run(["git", "-C", src_dir, "push", "origin", "--delete", "tag", legacy_tag], check=False)
+    # Do not delete non-zet tags here. They may be upstream tags needed for import.
 
 
 def read_components(src_dir: str) -> List[str]:
@@ -448,7 +440,7 @@ def update_readme_badges(src_dir: str) -> None:
 def delete_branch_and_tag(version: str, src_dir: str, push: bool = False) -> None:
     """Delete release branches/tags locally and optionally on origin."""
     branch_variants = [release_branch_name(version), f"release/{version}"]
-    tag_variants = [release_tag_name(version), version]
+    tag_variants = [release_tag_name(version)]
 
     for branch in branch_variants:
         run(["git", "-C", src_dir, "branch", "-D", branch], check=False)
