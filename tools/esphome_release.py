@@ -277,15 +277,71 @@ def apply_patches(patches: List[str], src_dir: str) -> None:
     try:
         run(cmd)
     except subprocess.CalledProcessError:
-        print(
-            "\nPatch apply failed.\n"
-            "Resolve conflicts, then run:\n"
-            "  git am --continue\n"
-            "Or abort with:\n"
-            "  git am --abort\n",
-            file=sys.stderr,
+        # Patch apply failed - try to auto-resolve common conflicts
+        print("\nPatch apply failed. Attempting auto-resolution...", file=sys.stderr)
+        
+        # Get list of conflicted files
+        status_output = run(
+            ["git", "-C", src_dir, "status", "--porcelain"],
+            capture=True,
         )
-        sys.exit(2)
+        conflicted_files = [line.split()[-1] for line in status_output.split('\n') if line.startswith('UU') or line.startswith('AA') or line.startswith('DD')]
+        
+        if not conflicted_files:
+            # Check for unmerged paths differently
+            diff_output = run(
+                ["git", "-C", src_dir, "diff", "--name-only", "--diff-filter=U"],
+                capture=True,
+            )
+            conflicted_files = diff_output.split('\n') if diff_output else []
+        
+        conflicted_files = [f for f in conflicted_files if f]
+        
+        if not conflicted_files:
+            print("Could not identify conflicted files. Manual resolution required.", file=sys.stderr)
+            print("\nResolve conflicts, then run:\n  git am --continue\nOr abort with:\n  git am --abort\n", file=sys.stderr)
+            sys.exit(2)
+        
+        print(f"Found {len(conflicted_files)} conflicted file(s):", file=sys.stderr)
+        for f in conflicted_files:
+            print(f"  - {f}", file=sys.stderr)
+        
+        # Try to auto-resolve README.md by regenerating it
+        if "README.md" in conflicted_files:
+            print("\nAttempting to auto-resolve README.md by regenerating badges...", file=sys.stderr)
+            try:
+                # Accept theirs (upstream) for README.md first, then regenerate
+                run(["git", "-C", src_dir, "checkout", "--theirs", "README.md"], check=False)
+                # Try to regenerate badges
+                update_readme_badges(src_dir)
+                run(["git", "-C", src_dir, "add", "README.md"])
+                conflicted_files = [f for f in conflicted_files if f != "README.md"]
+                print("Successfully resolved README.md", file=sys.stderr)
+            except Exception as e:
+                print(f"Failed to auto-resolve README.md: {e}", file=sys.stderr)
+        
+        # Try to auto-resolve remaining conflicts by accepting ours
+        for conflict_file in conflicted_files:
+            file_path = os.path.join(src_dir, conflict_file)
+            if os.path.exists(file_path):
+                print(f"Auto-resolving {conflict_file} by accepting current version...", file=sys.stderr)
+                run(["git", "-C", src_dir, "checkout", "--ours", conflict_file], check=False)
+                run(["git", "-C", src_dir, "add", conflict_file], check=False)
+        
+        # Try to continue the patch application
+        print("\nContinuing patch application...", file=sys.stderr)
+        try:
+            run(["git", "-C", src_dir, "am", "--continue"])
+        except subprocess.CalledProcessError:
+            print(
+                "\nPatch apply still failing after auto-resolution.\n"
+                "Remaining conflicts require manual resolution:\n"
+                "  git am --continue    (to continue after resolving)\n"
+                "  git am --skip        (to skip current patch)\n"
+                "  git am --abort       (to cancel the entire operation)\n",
+                file=sys.stderr,
+            )
+            sys.exit(2)
 
 
 def update_readme_badges(src_dir: str) -> None:
