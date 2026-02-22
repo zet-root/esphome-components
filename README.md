@@ -1,5 +1,6 @@
 # ESPHome Components (RP2040 Focused)
 
+[![ESPHome Compile](https://github.com/zet-root/esphome-components/actions/workflows/esphome-compile.yml/badge.svg)](https://github.com/zet-root/esphome-components/actions/workflows/esphome-compile.yml)
 
 A small collection of custom **ESPHome external components** for use in your ESPHome projects.
 
@@ -70,3 +71,32 @@ PRs and issues are welcome. If you add a new component, consider including:
 - a minimal YAML example
 - any required libraries / `platformio_options`
 - tested boards / chipsets
+
+### Testing
+
+To test components locally:
+
+1. **Set up ESPHome** at the version in `.upstream_version`:
+   ```bash
+   git clone https://github.com/esphome/esphome.git
+   cd esphome
+   git checkout $(cat ../.upstream_version | tr -d ' \n')
+   pip install -e .
+   cd ..
+   ```
+
+2. **Create a config with secrets**:
+   ```bash
+   cat > secrets.yaml <<EOF
+   wifi_ssid: "test"
+   wifi_password: "test-password"
+   EOF
+   ```
+
+3. **Compile a minimal example**:
+   ```bash
+   esphome compile config/minimal-dht.yaml
+   esphome compile config/minimal-mqtt.yaml
+   ```
+
+The GitHub Actions workflow (`.github/workflows/esphome-compile.yml`) automatically runs these on every push.

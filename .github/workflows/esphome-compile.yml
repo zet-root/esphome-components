@@ -1,0 +1,86 @@
+name: ESPHome Compile
+
+on:
+  push:
+
+jobs:
+  compile:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        config:
+          - config/minimal-dht.yaml
+          - config/minimal-mqtt.yaml
+    env:
+      COMPONENTS_DIR: ${{ github.workspace }}
+    steps:
+      - name: Checkout components repo
+        uses: actions/checkout@v4
+
+      - name: Read ESPHome version
+        id: esphome_version
+        shell: bash
+        run: |
+          VERSION=$(tr -d ' \n' < .upstream_version)
+          if [[ -z "$VERSION" ]]; then
+            echo "Missing ESPHome version in .upstream_version" >&2
+            exit 1
+          fi
+          echo "ESPHOME_VERSION=$VERSION" >> "$GITHUB_ENV"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Checkout ESPHome
+        shell: bash
+        run: |
+          git clone --filter=blob:none https://github.com/esphome/esphome.git esphome-src
+          cd esphome-src
+          if git rev-parse "refs/tags/${ESPHOME_VERSION}" >/dev/null 2>&1; then
+            git checkout "refs/tags/${ESPHOME_VERSION}"
+          elif git rev-parse "refs/tags/v${ESPHOME_VERSION}" >/dev/null 2>&1; then
+            git checkout "refs/tags/v${ESPHOME_VERSION}"
+          else
+            echo "ESPHome tag ${ESPHOME_VERSION} (or v${ESPHOME_VERSION}) not found" >&2
+            exit 1
+          fi
+
+      - name: Install ESPHome
+        shell: bash
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ./esphome-src
+
+      - name: Prepare config
+        shell: bash
+        run: |
+          mkdir -p ci
+          CONFIG_BASENAME=$(basename "${{ matrix.config }}")
+          CI_CONFIG="ci/${CONFIG_BASENAME}"
+          cp "${{ matrix.config }}" "$CI_CONFIG"
+          # Replace external component source with local path for CI.
+          sed -i "s|source: github://[^ ]*|source: ${COMPONENTS_DIR}|g" "$CI_CONFIG"
+          cat > "ci/secrets.yaml" <<'EOF'
+          wifi_ssid: "ci"
+          wifi_password: "ci-password"
+          EOF
+          echo "CI_CONFIG=$CI_CONFIG" >> "$GITHUB_ENV"
+
+      - name: Compile
+        shell: bash
+        run: |
+          esphome compile "$CI_CONFIG"
+
+      - name: Job summary
+        if: always()
+        shell: bash
+        run: |
+          {
+            echo "ESPHome version: $ESPHOME_VERSION"
+            echo "Config: ${{ matrix.config }}"
+            echo "Result: ${{ job.status }}"
+          } >> "$GITHUB_STEP_SUMMARY"
