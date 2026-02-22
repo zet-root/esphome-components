@@ -1,0 +1,1 @@
+python esphome_release.py release --src-dir ../esphome-components-zetroot-github/ zet-2026.1.2 --push
