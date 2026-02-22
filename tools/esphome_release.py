@@ -20,6 +20,7 @@ from __future__ import annotations
 import argparse
 import glob
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -41,6 +42,8 @@ UPSTREAM_VERSION_FILE = ".upstream_version"
 VERSIONS_FILE = ".versions.yml"
 
 IMPORT_COMMIT_PREFIX = "Import ESPHome "
+INFRA_PATH_PREFIXES = ("tools/", ".github/")
+INFRA_PATHS = ("tools/update_readme_badges.py",)
 
 
 def run(cmd: List[str], *, capture: bool = False, check: bool = True) -> str:
@@ -246,107 +249,102 @@ def create_annotated_tag(tag: str, message: str, src_dir: str, force: bool = Fal
     run(args)
 
 
-def format_patch_stack(base_commit: str, outdir: str, src_dir: str) -> List[str]:
+def _parse_patch_paths(patch_content: str) -> List[str]:
+    paths: List[str] = []
+    for line in patch_content.splitlines():
+        if line.startswith("+++ b/"):
+            path = line[len("+++ b/") :].strip()
+            if path != "/dev/null":
+                paths.append(path)
+    return paths
+
+
+def _is_infra_path(path: str) -> bool:
+    if path in INFRA_PATHS:
+        return True
+    return path.startswith(INFRA_PATH_PREFIXES)
+
+
+def format_patch_stack(base_commit: str, outdir: str, src_dir: str) -> tuple[List[str], List[str]]:
     """
     Creates patch files for base_commit..HEAD and returns them sorted.
     Excludes version metadata commits (those with "Update versions" in message).
-    Also excludes infrastructure/tool commits (those modifying tools/, .github/, or .versions.yml).
-    Returns an empty list if there are no custom patches (just metadata commits).
+    Splits patches into component and infrastructure patches.
+    Returns empty lists if there are no custom patches.
     """
     run(["git", "-C", src_dir, "format-patch", f"{base_commit}..HEAD", "-o", outdir])
     patches = sorted(glob.glob(os.path.join(outdir, "*.patch")))
-    
-    # Filter out version metadata commits and infrastructure changes
-    filtered_patches = []
+
+    component_patches: List[str] = []
+    infra_patches: List[str] = []
     for patch in patches:
-        with open(patch, 'r', encoding="utf-8") as f:
+        with open(patch, "r", encoding="utf-8") as f:
             content = f.read()
-            # Skip version update commits
-            if "Update versions:" in content or "Also updates README" in content:
-                continue
-            # Skip infrastructure/tool commits (tools/, .github/, .versions.yml)
-            if any(skip in content for skip in [
-                "tools/esphome_release.py",
-                "tools/",
-                ".github/",
-                ".versions.yml",
-                "update_readme_badges.py"
-            ]):
-                continue
-            filtered_patches.append(patch)
-    
-    return filtered_patches
+
+        # Skip version update commits
+        if "Update versions:" in content or "Also updates README" in content:
+            continue
+
+        paths = _parse_patch_paths(content)
+        if not paths:
+            component_patches.append(patch)
+            continue
+
+        if VERSIONS_FILE in paths:
+            # Avoid replaying .versions.yml changes; releases update it explicitly.
+            continue
+
+        infra_only = all(_is_infra_path(p) for p in paths)
+        if infra_only:
+            infra_patches.append(patch)
+        else:
+            if any(_is_infra_path(p) for p in paths) and any(not _is_infra_path(p) for p in paths):
+                print(f"Warning: Patch mixes infra and component changes: {os.path.basename(patch)}")
+            component_patches.append(patch)
+
+    return component_patches, infra_patches
 
 
 def apply_patches(patches: List[str], src_dir: str) -> None:
     # Use 3-way apply to reduce conflicts when upstream context shifts slightly.
     if not patches:
-        # No custom patches to apply - that's okay
         return
-    
+
     cmd = ["git", "-C", src_dir, "am", "--3way"] + patches
     try:
         run(cmd)
     except subprocess.CalledProcessError:
-        # Patch apply failed - try to auto-resolve common conflicts
-        print("\nPatch apply failed. Attempting auto-resolution...", file=sys.stderr)
-        
-        # Get list of conflicted files
-        status_output = run(
-            ["git", "-C", src_dir, "status", "--porcelain"],
+        print("\nPatch apply failed.", file=sys.stderr)
+
+        diff_output = run(
+            ["git", "-C", src_dir, "diff", "--name-only", "--diff-filter=U"],
             capture=True,
         )
-        conflicted_files = [line.split()[-1] for line in status_output.split('\n') if line.startswith('UU') or line.startswith('AA') or line.startswith('DD')]
-        
-        if not conflicted_files:
-            # Check for unmerged paths differently
-            diff_output = run(
-                ["git", "-C", src_dir, "diff", "--name-only", "--diff-filter=U"],
-                capture=True,
-            )
-            conflicted_files = diff_output.split('\n') if diff_output else []
-        
-        conflicted_files = [f for f in conflicted_files if f]
-        
+        conflicted_files = [f for f in diff_output.split("\n") if f]
+
         if not conflicted_files:
             print("Could not identify conflicted files. Manual resolution required.", file=sys.stderr)
             print("\nResolve conflicts, then run:\n  git am --continue\nOr abort with:\n  git am --abort\n", file=sys.stderr)
             sys.exit(2)
-        
+
         print(f"Found {len(conflicted_files)} conflicted file(s):", file=sys.stderr)
         for f in conflicted_files:
             print(f"  - {f}", file=sys.stderr)
-        
-        # Try to auto-resolve README.md by regenerating it
+
         if "README.md" in conflicted_files:
             print("\nAttempting to auto-resolve README.md by regenerating badges...", file=sys.stderr)
             try:
-                # Accept theirs (upstream) for README.md first, then regenerate
                 run(["git", "-C", src_dir, "checkout", "--theirs", "README.md"], check=False)
-                # Try to regenerate badges
                 update_readme_badges(src_dir)
                 run(["git", "-C", src_dir, "add", "README.md"])
                 conflicted_files = [f for f in conflicted_files if f != "README.md"]
                 print("Successfully resolved README.md", file=sys.stderr)
             except Exception as e:
                 print(f"Failed to auto-resolve README.md: {e}", file=sys.stderr)
-        
-        # Try to auto-resolve remaining conflicts by accepting ours
-        for conflict_file in conflicted_files:
-            file_path = os.path.join(src_dir, conflict_file)
-            if os.path.exists(file_path):
-                print(f"Auto-resolving {conflict_file} by accepting current version...", file=sys.stderr)
-                run(["git", "-C", src_dir, "checkout", "--ours", conflict_file], check=False)
-                run(["git", "-C", src_dir, "add", conflict_file], check=False)
-        
-        # Try to continue the patch application
-        print("\nContinuing patch application...", file=sys.stderr)
-        try:
-            run(["git", "-C", src_dir, "am", "--continue"])
-        except subprocess.CalledProcessError:
+
+        if conflicted_files:
             print(
-                "\nPatch apply still failing after auto-resolution.\n"
-                "Remaining conflicts require manual resolution:\n"
+                "\nRemaining conflicts require manual resolution:\n"
                 "  git am --continue    (to continue after resolving)\n"
                 "  git am --skip        (to skip current patch)\n"
                 "  git am --abort       (to cancel the entire operation)\n",
@@ -354,10 +352,13 @@ def apply_patches(patches: List[str], src_dir: str) -> None:
             )
             sys.exit(2)
 
+        print("\nContinuing patch application...", file=sys.stderr)
+        run(["git", "-C", src_dir, "am", "--continue"])
+
 
 def update_readme_badges(src_dir: str) -> None:
     """Call update_readme_badges.py to refresh README with version badges."""
-    update_script = os.path.join(src_dir, "update_readme_badges.py")
+    update_script = os.path.join(src_dir, "tools", "update_readme_badges.py")
     
     if not os.path.exists(update_script):
         print(f"Warning: {update_script} not found, skipping README update")
@@ -413,6 +414,7 @@ def list_releases(src_dir: str) -> None:
 
 def detect_newer_versions(src_dir: str) -> List[str]:
     """Detect upstream ESPHome versions newer than current latest."""
+    ensure_remote(src_dir)
     fetch_upstream_tags(src_dir)
     
     versions_data = read_versions(src_dir)
@@ -430,8 +432,14 @@ def detect_newer_versions(src_dir: str) -> List[str]:
     ).split("\n")
     all_tags = [t.strip() for t in all_tags if t.strip()]
     
-    # Filter for ESPHome version tags (numeric pattern)
-    version_tags = [t for t in all_tags if t and not t.startswith("zet-")]
+    # Filter for ESPHome version tags (numeric pattern, optional v prefix)
+    version_tags = []
+    for tag in all_tags:
+        if not tag or tag.startswith("zet-"):
+            continue
+        normalized = tag[1:] if tag.startswith("v") else tag
+        if re.match(r"^\d+\.\d+\.\d+$", normalized):
+            version_tags.append(normalized)
     
     # Simple version comparison (assuming YYYY.M.P format)
     def parse_version(v: str) -> tuple:
@@ -445,11 +453,11 @@ def detect_newer_versions(src_dir: str) -> List[str]:
     current_version = parse_version(current_latest)
     newer = []
     
-    for tag in version_tags:
+    for tag in sorted(set(version_tags)):
         tag_version = parse_version(tag)
         if tag_version > current_version and tag not in supported:
             newer.append(tag)
-    
+
     return sorted(newer, reverse=True)
 
 
@@ -516,6 +524,8 @@ def cmd_detect(args: argparse.Namespace) -> None:
                     sys.exit(1)
 
 
+
+
 def cmd_init(args: argparse.Namespace) -> None:
     src_dir = args.src_dir or os.getcwd()
     ensure_git_repo(src_dir)
@@ -577,6 +587,17 @@ def cmd_release(args: argparse.Namespace) -> None:
     if not base:
         die("Could not find a previous import commit. Run `init <tag>` first.")
 
+    # Ensure base is an ancestor of HEAD to avoid replaying patches from a divergent history.
+    is_ancestor = subprocess.run(
+        ["git", "-C", src_dir, "merge-base", "--is-ancestor", base, "HEAD"],
+        check=False,
+    ).returncode
+    if is_ancestor != 0:
+        die(
+            "Last import commit is not an ancestor of HEAD. "
+            "Please rebase or ensure a linear history before releasing."
+        )
+
     branch = args.branch or f"release/{full_tag}"
     existing_branches = run(["git", "-C", src_dir, "branch", "--list", branch], capture=True)
     if existing_branches.strip():
@@ -607,11 +628,12 @@ def cmd_release(args: argparse.Namespace) -> None:
     
     # Create/recreate the release branch
     with tempfile.TemporaryDirectory(prefix="esphome_patches_") as td:
-        patches = format_patch_stack(base, td, src_dir)
+        component_patches, infra_patches = format_patch_stack(base, td, src_dir)
         run(["git", "-C", src_dir, "switch", "-c", branch, base])
         import_components_from_upstream(upstream_tag, comps, src_dir)
         commit_import(upstream_tag, comps, src_dir)
-        apply_patches(patches, src_dir)
+        apply_patches(component_patches, src_dir)
+        apply_patches(infra_patches, src_dir)
     create_annotated_tag(
         full_tag,
         f"External components for ESPHome {full_tag}",
@@ -636,6 +658,17 @@ def cmd_release(args: argparse.Namespace) -> None:
     if args.push:
         run(["git", "-C", src_dir, "push", "origin", "main"])
         print("Pushed updated versions and README to main.")
+    
+    # Also update infrastructure on the release branch
+    print(f"\nUpdating infrastructure on release branch {branch}...")
+    run(["git", "-C", src_dir, "switch", branch])
+    update_versions(upstream_tag, src_dir)
+    update_readme_badges(src_dir)
+    run(["git", "-C", src_dir, "add", VERSIONS_FILE, "README.md"])
+    run(["git", "-C", src_dir, "commit", "-m", f"Update versions on release branch: {upstream_tag}"])
+    if args.push:
+        run(["git", "-C", src_dir, "push", "origin", branch])
+        print("Pushed infrastructure updates to release branch.")
 
 
 def main() -> None:

@@ -42,13 +42,11 @@ def generate_badge_section(versions_data: dict, repo: str = "zet-root/esphome-co
     lines.append("|---------|--------|")
     
     for version in supported:
-        # Create badge for main branch (tests all versions)
-        if version == latest:
-            badge = f'[![{version} (latest)](https://github.com/{repo}/actions/workflows/esphome-compile.yml/badge.svg)](https://github.com/{repo}/actions/workflows/esphome-compile.yml)'
-        else:
-            # For non-latest versions, we can point to the release branch if it exists
-            badge = f'[![{version}](https://github.com/{repo}/actions/workflows/esphome-compile.yml/badge.svg?branch=release/zet-{version})](https://github.com/{repo}/actions/workflows/esphome-compile.yml?query=branch%3Arelease%2Fzet-{version})'
-        
+        label = f"{version} (latest)" if version == latest else version
+        badge = (
+            f'[![{label}](https://github.com/{repo}/actions/workflows/esphome-compile.yml/badge.svg?branch=release/zet-{version})]'
+            f'(https://github.com/{repo}/actions/workflows/esphome-compile.yml?query=branch%3Arelease%2Fzet-{version})'
+        )
         lines.append(f"| `{version}` | {badge} |")
     
     lines.append("")
