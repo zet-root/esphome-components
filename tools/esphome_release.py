@@ -102,6 +102,11 @@ def ensure_clean_worktree(src_dir: str) -> None:
         die("Working tree not clean. Commit/stash first:\n" + status)
 
 
+def get_current_branch(src_dir: str) -> str:
+    branch = run(["git", "-C", src_dir, "rev-parse", "--abbrev-ref", "HEAD"], capture=True)
+    return branch.strip()
+
+
 def ensure_remote(src_dir: str) -> None:
     remotes = run(["git", "-C", src_dir, "remote"], capture=True).split()
     if UPSTREAM_REMOTE_NAME not in remotes:
@@ -584,6 +589,8 @@ def cmd_release(args: argparse.Namespace) -> None:
     ensure_remote(src_dir)
     fetch_upstream_tags(src_dir)
 
+    original_branch = get_current_branch(src_dir)
+
     # Support zet- prefix
     full_tag = args.esphome_tag
     if full_tag.startswith("zet-"):
@@ -611,75 +618,79 @@ def cmd_release(args: argparse.Namespace) -> None:
 
     branch = args.branch or f"release/{full_tag}"
     existing_branches = run(["git", "-C", src_dir, "branch", "--list", branch], capture=True)
-    if existing_branches.strip():
-        # Verify the existing branch has the correct upstream version
-        branch_version = get_branch_import_version(branch, src_dir)
-        if branch_version == upstream_tag:
-            print(f"Branch {branch} already exists with correct version, switching to it.")
-            run(["git", "-C", src_dir, "switch", branch])
-            # Code and patches are already applied, just tag and push
-            create_annotated_tag(
-                full_tag,
-                f"External components for ESPHome {full_tag}",
-                src_dir,
-                force=args.force_tag,
-            )
-            print("\nRelease already existed on branch:", branch)
-            print("Tag created:", full_tag)
-            if args.push:
-                run(["git", "-C", src_dir, "push", "-u", "origin", branch])
-                run(["git", "-C", src_dir, "push", "origin", f"refs/tags/{full_tag}"])
-                print("Pushed branch + tag.")
-            return
-        else:
-            # Branch exists but has wrong version - recreate it
-            print(f"Branch {branch} exists but has version {branch_version or 'unknown'}, expected {upstream_tag}")
-            print(f"Deleting and recreating branch {branch}...")
-            run(["git", "-C", src_dir, "branch", "-D", branch], check=False)
-    
-    # Create/recreate the release branch
-    with tempfile.TemporaryDirectory(prefix="esphome_patches_") as td:
-        component_patches, infra_patches = format_patch_stack(base, td, src_dir)
-        run(["git", "-C", src_dir, "switch", "-c", branch, base])
-        import_components_from_upstream(upstream_tag, comps, src_dir)
-        commit_import(upstream_tag, comps, src_dir)
-        apply_patches(component_patches, src_dir)
-        apply_patches(infra_patches, src_dir, allow_skip_infra_conflicts=True)
-    create_annotated_tag(
-        full_tag,
-        f"External components for ESPHome {full_tag}",
-        src_dir,
-        force=args.force_tag,
-    )
-    print("\nRelease created on branch:", branch)
-    print("Tag created:", full_tag)
-    if args.push:
-        run(["git", "-C", src_dir, "push", "-u", "origin", branch])
-        run(["git", "-C", src_dir, "push", "origin", f"refs/tags/{full_tag}"])
-        print("Pushed branch + tag.")
-    
-    # Update .versions.yml on main branch
-    print("\nUpdating .versions.yml on main branch...")
-    run(["git", "-C", src_dir, "switch", "main"])
-    run(["git", "-C", src_dir, "pull", "origin", "main"])
-    update_versions(upstream_tag, src_dir)
-    update_readme_badges(src_dir)
-    run(["git", "-C", src_dir, "add", VERSIONS_FILE, "README.md"])
-    run(["git", "-C", src_dir, "commit", "-m", f"Update versions: add {upstream_tag} as latest\n\nAlso updates README with current badges"])
-    if args.push:
-        run(["git", "-C", src_dir, "push", "origin", "main"])
-        print("Pushed updated versions and README to main.")
-    
-    # Also update infrastructure on the release branch
-    print(f"\nUpdating infrastructure on release branch {branch}...")
-    run(["git", "-C", src_dir, "switch", branch])
-    update_versions(upstream_tag, src_dir)
-    update_readme_badges(src_dir)
-    run(["git", "-C", src_dir, "add", VERSIONS_FILE, "README.md"])
-    run(["git", "-C", src_dir, "commit", "-m", f"Update versions on release branch: {upstream_tag}"])
-    if args.push:
-        run(["git", "-C", src_dir, "push", "origin", branch])
-        print("Pushed infrastructure updates to release branch.")
+    try:
+        if existing_branches.strip():
+            # Verify the existing branch has the correct upstream version
+            branch_version = get_branch_import_version(branch, src_dir)
+            if branch_version == upstream_tag:
+                print(f"Branch {branch} already exists with correct version, switching to it.")
+                run(["git", "-C", src_dir, "switch", branch])
+                # Code and patches are already applied, just tag and push
+                create_annotated_tag(
+                    full_tag,
+                    f"External components for ESPHome {full_tag}",
+                    src_dir,
+                    force=args.force_tag,
+                )
+                print("\nRelease already existed on branch:", branch)
+                print("Tag created:", full_tag)
+                if args.push:
+                    run(["git", "-C", src_dir, "push", "-u", "origin", branch])
+                    run(["git", "-C", src_dir, "push", "origin", f"refs/tags/{full_tag}"])
+                    print("Pushed branch + tag.")
+                return
+            else:
+                # Branch exists but has wrong version - recreate it
+                print(f"Branch {branch} exists but has version {branch_version or 'unknown'}, expected {upstream_tag}")
+                print(f"Deleting and recreating branch {branch}...")
+                run(["git", "-C", src_dir, "branch", "-D", branch], check=False)
+
+        # Create/recreate the release branch
+        with tempfile.TemporaryDirectory(prefix="esphome_patches_") as td:
+            component_patches, infra_patches = format_patch_stack(base, td, src_dir)
+            run(["git", "-C", src_dir, "switch", "-c", branch, base])
+            import_components_from_upstream(upstream_tag, comps, src_dir)
+            commit_import(upstream_tag, comps, src_dir)
+            apply_patches(component_patches, src_dir)
+            apply_patches(infra_patches, src_dir, allow_skip_infra_conflicts=True)
+        create_annotated_tag(
+            full_tag,
+            f"External components for ESPHome {full_tag}",
+            src_dir,
+            force=args.force_tag,
+        )
+        print("\nRelease created on branch:", branch)
+        print("Tag created:", full_tag)
+        if args.push:
+            run(["git", "-C", src_dir, "push", "-u", "origin", branch])
+            run(["git", "-C", src_dir, "push", "origin", f"refs/tags/{full_tag}"])
+            print("Pushed branch + tag.")
+
+        # Update .versions.yml on main branch
+        print("\nUpdating .versions.yml on main branch...")
+        run(["git", "-C", src_dir, "switch", "main"])
+        run(["git", "-C", src_dir, "pull", "origin", "main"])
+        update_versions(upstream_tag, src_dir)
+        update_readme_badges(src_dir)
+        run(["git", "-C", src_dir, "add", VERSIONS_FILE, "README.md"])
+        run(["git", "-C", src_dir, "commit", "-m", f"Update versions: add {upstream_tag} as latest\n\nAlso updates README with current badges"])
+        if args.push:
+            run(["git", "-C", src_dir, "push", "origin", "main"])
+            print("Pushed updated versions and README to main.")
+
+        # Also update infrastructure on the release branch
+        print(f"\nUpdating infrastructure on release branch {branch}...")
+        run(["git", "-C", src_dir, "switch", branch])
+        update_versions(upstream_tag, src_dir)
+        update_readme_badges(src_dir)
+        run(["git", "-C", src_dir, "add", VERSIONS_FILE, "README.md"])
+        run(["git", "-C", src_dir, "commit", "-m", f"Update versions on release branch: {upstream_tag}"])
+        if args.push:
+            run(["git", "-C", src_dir, "push", "origin", branch])
+            print("Pushed infrastructure updates to release branch.")
+    finally:
+        if original_branch and original_branch != get_current_branch(src_dir):
+            run(["git", "-C", src_dir, "switch", original_branch], check=False)
 
 
 def main() -> None:
