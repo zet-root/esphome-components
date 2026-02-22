@@ -119,14 +119,24 @@ def fetch_upstream_tags(src_dir: str) -> None:
     run(["git", "-C", src_dir, "fetch", UPSTREAM_REMOTE_NAME, "--tags"])
 
 
-def verify_upstream_tag(tag: str, src_dir: str) -> None:
-    try:
-        run(["git", "-C", src_dir, "rev-parse", "--verify", f"refs/tags/{tag}^{{}}"], capture=True)
-    except subprocess.CalledProcessError:
-        die(
-            f"Upstream tag '{tag}' not found in fetched tags. "
-            f"Check https://github.com/esphome/esphome/releases for the exact tag name."
-        )
+def resolve_upstream_tag(tag: str, src_dir: str) -> str:
+    """Return the exact upstream tag, trying a v-prefixed fallback."""
+    candidates = [tag, f"v{tag}"]
+    for candidate in candidates:
+        try:
+            run(
+                ["git", "-C", src_dir, "rev-parse", "--verify", f"refs/tags/{candidate}^{{}}"],
+                capture=True,
+            )
+            return candidate
+        except subprocess.CalledProcessError:
+            continue
+    die(
+        f"Upstream tag '{tag}' not found in fetched tags. "
+        f"Tried: {', '.join(candidates)}. "
+        "Check https://github.com/esphome/esphome/releases for the exact tag name."
+    )
+    return tag
 
 
 def normalize_version(tag: str) -> str:
@@ -271,6 +281,10 @@ def import_components_from_upstream(tag: str, comps: List[str], src_dir: str) ->
         rc2 = p2.wait()
         rc1 = p1.wait()
         if rc1 != 0 or rc2 != 0:
+            run(
+                ["git", "-C", src_dir, "restore", "--worktree", "--staged", LOCAL_COMPONENT_ROOT, UPSTREAM_VERSION_FILE],
+                check=False,
+            )
             die(f"Failed to import '{c}' from upstream tag '{tag}'")
 
     with open(os.path.join(src_dir, UPSTREAM_VERSION_FILE), "w", encoding="utf-8") as f:
@@ -593,7 +607,7 @@ def cmd_init(args: argparse.Namespace) -> None:
     upstream_tag = version
     full_tag = release_tag_name(version)
 
-    verify_upstream_tag(upstream_tag, src_dir)
+    upstream_tag = resolve_upstream_tag(upstream_tag, src_dir)
 
     comps = read_components(src_dir)
     write_components_file_if_missing(comps, src_dir)
@@ -632,7 +646,7 @@ def cmd_release(args: argparse.Namespace) -> None:
     upstream_tag = version
     full_tag = release_tag_name(version)
 
-    verify_upstream_tag(upstream_tag, src_dir)
+    upstream_tag = resolve_upstream_tag(upstream_tag, src_dir)
 
     cleanup_legacy_release(version, src_dir, push=args.push)
 
