@@ -2,6 +2,14 @@
 
 [![ESPHome Compile](https://github.com/zet-root/esphome-components/actions/workflows/esphome-compile.yml/badge.svg)](https://github.com/zet-root/esphome-components/actions/workflows/esphome-compile.yml)
 
+## Build Status by Version
+
+| Version | Status |
+|---------|--------|
+| `2026.1.1` | [![2026.1.1](https://github.com/zet-root/esphome-components/actions/workflows/esphome-compile.yml/badge.svg?branch=release/zet-2026.1.1)](https://github.com/zet-root/esphome-components/actions/workflows/esphome-compile.yml?query=branch%3Arelease%2Fzet-2026.1.1) |
+| `2026.1.0` | [![2026.1.0](https://github.com/zet-root/esphome-components/actions/workflows/esphome-compile.yml/badge.svg?branch=release/zet-2026.1.0)](https://github.com/zet-root/esphome-components/actions/workflows/esphome-compile.yml?query=branch%3Arelease%2Fzet-2026.1.0) |
+| `2026.1.2` | [![2026.1.2 (latest)](https://github.com/zet-root/esphome-components/actions/workflows/esphome-compile.yml/badge.svg)](https://github.com/zet-root/esphome-components/actions/workflows/esphome-compile.yml) |
+
 A small collection of custom **ESPHome external components** for use in your ESPHome projects.
 
 I run most of my ESPHome devices with RP2040 / PicoW boards. However they do not seem to get the same attention from ESPHome compared to ESP modules...
