@@ -46,6 +46,7 @@ INFRA_PATH_PREFIXES = ("tools/", ".github/")
 INFRA_PATHS = ("tools/update_readme_badges.py", "README.md")
 RELEASE_BRANCH_PREFIX = "release/zet-"
 RELEASE_TAG_PREFIX = "zet-"
+INFRA_SYNC_PATHS = (".github/workflows",)
 
 
 def run(cmd: List[str], *, capture: bool = False, check: bool = True) -> str:
@@ -171,6 +172,11 @@ def cleanup_legacy_release(version: str, src_dir: str, push: bool = False) -> No
             run(["git", "-C", src_dir, "push", "origin", "--delete", legacy_branch], check=False)
 
     # Do not delete non-zet tags here. They may be upstream tags needed for import.
+
+
+def sync_infra_from_main(src_dir: str) -> None:
+    """Ensure key infra files are present on the release branch."""
+    run(["git", "-C", src_dir, "checkout", "main", "--", *INFRA_SYNC_PATHS], check=False)
 
 
 def read_components(src_dir: str) -> List[str]:
@@ -723,6 +729,7 @@ def cmd_release(args: argparse.Namespace) -> None:
         # Also update infrastructure on the release branch
         print(f"\nUpdating infrastructure on release branch {branch}...")
         run(["git", "-C", src_dir, "switch", branch])
+        sync_infra_from_main(src_dir)
         update_versions(upstream_tag, src_dir)
         update_readme_badges(src_dir)
         run(["git", "-C", src_dir, "add", VERSIONS_FILE, "README.md"])
