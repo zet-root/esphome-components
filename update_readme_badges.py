@@ -18,6 +18,13 @@ def read_versions(src_dir: str) -> dict:
     if os.path.exists(versions_path):
         with open(versions_path, "r", encoding="utf-8") as f:
             data = yaml.safe_load(f)
+            if data and data.get("supported"):
+                # Sort supported versions in descending order
+                data["supported"] = sorted(
+                    data["supported"],
+                    key=lambda v: tuple(map(int, v.split("."))),
+                    reverse=True
+                )
             return data if data else {"latest": "", "supported": []}
     return {"latest": "", "supported": []}
 
