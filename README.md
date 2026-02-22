@@ -6,10 +6,10 @@
 
 | Version | Status |
 |---------|--------|
+| `2026.1.3` | [![2026.1.3 (latest)](https://github.com/zet-root/esphome-components/actions/workflows/esphome-compile.yml/badge.svg)](https://github.com/zet-root/esphome-components/actions/workflows/esphome-compile.yml) |
+| `2026.1.2` | [![2026.1.2](https://github.com/zet-root/esphome-components/actions/workflows/esphome-compile.yml/badge.svg?branch=release/zet-2026.1.2)](https://github.com/zet-root/esphome-components/actions/workflows/esphome-compile.yml?query=branch%3Arelease%2Fzet-2026.1.2) |
 | `2026.1.1` | [![2026.1.1](https://github.com/zet-root/esphome-components/actions/workflows/esphome-compile.yml/badge.svg?branch=release/zet-2026.1.1)](https://github.com/zet-root/esphome-components/actions/workflows/esphome-compile.yml?query=branch%3Arelease%2Fzet-2026.1.1) |
 | `2026.1.0` | [![2026.1.0](https://github.com/zet-root/esphome-components/actions/workflows/esphome-compile.yml/badge.svg?branch=release/zet-2026.1.0)](https://github.com/zet-root/esphome-components/actions/workflows/esphome-compile.yml?query=branch%3Arelease%2Fzet-2026.1.0) |
-| `2026.1.2` | [![2026.1.2](https://github.com/zet-root/esphome-components/actions/workflows/esphome-compile.yml/badge.svg?branch=release/zet-2026.1.2)](https://github.com/zet-root/esphome-components/actions/workflows/esphome-compile.yml?query=branch%3Arelease%2Fzet-2026.1.2) |
-| `2026.1.3` | [![2026.1.3 (latest)](https://github.com/zet-root/esphome-components/actions/workflows/esphome-compile.yml/badge.svg)](https://github.com/zet-root/esphome-components/actions/workflows/esphome-compile.yml) |
 
 A small collection of custom **ESPHome external components** for use in your ESPHome projects.
 
