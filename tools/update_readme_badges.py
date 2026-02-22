@@ -9,6 +9,7 @@ Reads .versions.yml and inserts/updates a badge section in README showing:
 
 import os
 import re
+import subprocess
 import yaml
 
 
@@ -27,6 +28,56 @@ def read_versions(src_dir: str) -> dict:
                 )
             return data if data else {"latest": "", "supported": []}
     return {"latest": "", "supported": []}
+
+
+def _read_release_versions_from_remote(src_dir: str) -> list[str]:
+    try:
+        output = subprocess.check_output(
+            ["git", "-C", src_dir, "ls-remote", "--heads", "origin", "release/zet-*"]
+        ).decode("utf-8")
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        return []
+
+    versions = []
+    for line in output.splitlines():
+        parts = line.split()
+        if len(parts) != 2:
+            continue
+        ref = parts[1]
+        if ref.startswith("refs/heads/release/zet-"):
+            versions.append(ref.split("refs/heads/release/zet-")[1])
+    return sorted(set(versions), key=lambda v: tuple(map(int, v.split("."))), reverse=True)
+
+
+def _read_release_versions_local(src_dir: str) -> list[str]:
+    try:
+        output = subprocess.check_output(
+            ["git", "-C", src_dir, "show-ref", "--heads", "refs/heads/release/zet-*"]
+        ).decode("utf-8")
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        return []
+
+    versions = []
+    for line in output.splitlines():
+        parts = line.split()
+        if len(parts) != 2:
+            continue
+        ref = parts[1]
+        if ref.startswith("refs/heads/release/zet-"):
+            versions.append(ref.split("refs/heads/release/zet-")[1])
+    return sorted(set(versions), key=lambda v: tuple(map(int, v.split("."))), reverse=True)
+
+
+def _filter_versions_to_release_branches(src_dir: str, versions: list[str]) -> list[str]:
+    remote_versions = _read_release_versions_from_remote(src_dir)
+    if remote_versions:
+        return [v for v in versions if v in remote_versions]
+
+    local_versions = _read_release_versions_local(src_dir)
+    if local_versions:
+        return [v for v in versions if v in local_versions]
+
+    return versions
 
 
 def generate_badge_section(versions_data: dict, repo: str = "zet-root/esphome-components") -> str:
@@ -64,6 +115,13 @@ def update_readme(src_dir: str, repo: str = "zet-root/esphome-components") -> No
     if not versions_data.get("supported"):
         print("No supported versions in .versions.yml")
         return
+
+    filtered_supported = _filter_versions_to_release_branches(src_dir, versions_data.get("supported", []))
+    if filtered_supported != versions_data.get("supported", []):
+        versions_data = dict(versions_data)
+        versions_data["supported"] = filtered_supported
+        if versions_data.get("latest") not in filtered_supported:
+            versions_data["latest"] = filtered_supported[0] if filtered_supported else ""
     
     badge_section = generate_badge_section(versions_data, repo)
     

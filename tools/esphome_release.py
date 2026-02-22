@@ -44,6 +44,8 @@ VERSIONS_FILE = ".versions.yml"
 IMPORT_COMMIT_PREFIX = "Import ESPHome "
 INFRA_PATH_PREFIXES = ("tools/", ".github/")
 INFRA_PATHS = ("tools/update_readme_badges.py",)
+RELEASE_BRANCH_PREFIX = "release/zet-"
+RELEASE_TAG_PREFIX = "zet-"
 
 
 def run(cmd: List[str], *, capture: bool = False, check: bool = True) -> str:
@@ -125,6 +127,48 @@ def verify_upstream_tag(tag: str, src_dir: str) -> None:
             f"Upstream tag '{tag}' not found in fetched tags. "
             f"Check https://github.com/esphome/esphome/releases for the exact tag name."
         )
+
+
+def normalize_version(tag: str) -> str:
+    """Normalize to a plain version like 2026.1.3, stripping zet-/v prefixes."""
+    normalized = tag.strip()
+    if normalized.startswith(RELEASE_TAG_PREFIX):
+        normalized = normalized[len(RELEASE_TAG_PREFIX) :]
+    if normalized.startswith("v"):
+        normalized = normalized[1:]
+    return normalized
+
+
+def release_branch_name(version: str) -> str:
+    return f"{RELEASE_BRANCH_PREFIX}{version}"
+
+
+def release_tag_name(version: str) -> str:
+    return f"{RELEASE_TAG_PREFIX}{version}"
+
+
+def cleanup_legacy_release(version: str, src_dir: str, push: bool = False) -> None:
+    """Remove legacy non-zet release branch/tag variants if present."""
+    legacy_branch = f"release/{version}"
+    legacy_tag = version
+
+    legacy_branch_exists = run(
+        ["git", "-C", src_dir, "branch", "--list", legacy_branch],
+        capture=True,
+    ).strip()
+    if legacy_branch_exists:
+        run(["git", "-C", src_dir, "branch", "-D", legacy_branch], check=False)
+        if push:
+            run(["git", "-C", src_dir, "push", "origin", "--delete", legacy_branch], check=False)
+
+    legacy_tag_exists = run(
+        ["git", "-C", src_dir, "tag", "--list", legacy_tag],
+        capture=True,
+    ).strip()
+    if legacy_tag_exists:
+        run(["git", "-C", src_dir, "tag", "-d", legacy_tag], check=False)
+        if push:
+            run(["git", "-C", src_dir, "push", "origin", "--delete", "tag", legacy_tag], check=False)
 
 
 def read_components(src_dir: str) -> List[str]:
@@ -387,23 +431,23 @@ def update_readme_badges(src_dir: str) -> None:
         print(f"Warning: Failed to update README badges: {e}", file=sys.stderr)
 
 
-def delete_branch_and_tag(tag: str, src_dir: str, push: bool = False) -> None:
-    """Delete a release branch and tag locally and optionally on origin."""
-    branch = f"release/zet-{tag}"
-    tagname = f"zet-{tag}"
-    
-    # Delete local branch
-    run(["git", "-C", src_dir, "branch", "-D", branch], check=False)
-    
-    # Delete local tag
-    run(["git", "-C", src_dir, "tag", "-d", tagname], check=False)
-    
+def delete_branch_and_tag(version: str, src_dir: str, push: bool = False) -> None:
+    """Delete release branches/tags locally and optionally on origin."""
+    branch_variants = [release_branch_name(version), f"release/{version}"]
+    tag_variants = [release_tag_name(version), version]
+
+    for branch in branch_variants:
+        run(["git", "-C", src_dir, "branch", "-D", branch], check=False)
+
+    for tagname in tag_variants:
+        run(["git", "-C", src_dir, "tag", "-d", tagname], check=False)
+
     if push:
-        # Delete remote branch
-        run(["git", "-C", src_dir, "push", "origin", "--delete", branch], check=False)
-        
-        # Delete remote tag
-        run(["git", "-C", src_dir, "push", "origin", "--delete", "tag", tagname], check=False)
+        for branch in branch_variants:
+            run(["git", "-C", src_dir, "push", "origin", "--delete", branch], check=False)
+
+        for tagname in tag_variants:
+            run(["git", "-C", src_dir, "push", "origin", "--delete", "tag", tagname], check=False)
 
 
 def list_releases(src_dir: str) -> None:
@@ -481,15 +525,11 @@ def cmd_delete(args: argparse.Namespace) -> None:
     """Delete a release branch and tag."""
     src_dir = args.src_dir or os.getcwd()
     ensure_git_repo(src_dir)
-    
-    tag = args.tag
-    if tag.startswith("zet-"):
-        version = tag[len("zet-"):]
-    else:
-        version = tag
-        tag = f"zet-{tag}"
-    
-    print(f"Deleting release: {tag}")
+
+    version = normalize_version(args.tag)
+    full_tag = release_tag_name(version)
+
+    print(f"Deleting release: {full_tag}")
     delete_branch_and_tag(version, src_dir, push=args.push)
     
     if args.push:
@@ -550,11 +590,9 @@ def cmd_init(args: argparse.Namespace) -> None:
     fetch_upstream_tags(src_dir)
 
     # Support zet- prefix
-    full_tag = args.esphome_tag
-    if full_tag.startswith("zet-"):
-        upstream_tag = full_tag[len("zet-"):]
-    else:
-        upstream_tag = full_tag
+        version = normalize_version(args.esphome_tag)
+        upstream_tag = version
+        full_tag = release_tag_name(version)
 
     verify_upstream_tag(upstream_tag, src_dir)
 
@@ -591,14 +629,13 @@ def cmd_release(args: argparse.Namespace) -> None:
 
     original_branch = get_current_branch(src_dir)
 
-    # Support zet- prefix
-    full_tag = args.esphome_tag
-    if full_tag.startswith("zet-"):
-        upstream_tag = full_tag[len("zet-"):]
-    else:
-        upstream_tag = full_tag
+    version = normalize_version(args.esphome_tag)
+    upstream_tag = version
+    full_tag = release_tag_name(version)
 
     verify_upstream_tag(upstream_tag, src_dir)
+
+    cleanup_legacy_release(version, src_dir, push=args.push)
 
     comps = read_components(src_dir)
     base = last_import_commit(src_dir)
@@ -616,7 +653,7 @@ def cmd_release(args: argparse.Namespace) -> None:
             "Please rebase or ensure a linear history before releasing."
         )
 
-    branch = args.branch or f"release/{full_tag}"
+    branch = args.branch or release_branch_name(version)
     existing_branches = run(["git", "-C", src_dir, "branch", "--list", branch], capture=True)
     try:
         if existing_branches.strip():
