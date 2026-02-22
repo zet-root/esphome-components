@@ -27,11 +27,11 @@ I publish my fixes for some versions of ESPHome only, so please make sure to be 
 
 ```yaml
 external_components:
-  - source: github://zet-root/esphome-components@zet-2026.1.0
+  - source: github://zet-root/esphome-components@zet-2026.1.1
     components: [ dht, mqtt ]
 ```
 
-Have a look at all tags starting with "zet-" to see the full list.
+See [.versions.yml](.versions.yml) for all tested ESPHome versions and the latest stable version.
 
 ---
 
@@ -76,11 +76,11 @@ PRs and issues are welcome. If you add a new component, consider including:
 
 To test components locally:
 
-1. **Set up ESPHome** at the version in `.upstream_version`:
+1. **Set up ESPHome** at a specific version (or use the one from `.versions.yml`):
    ```bash
    git clone https://github.com/esphome/esphome.git
    cd esphome
-   git checkout $(cat ../.upstream_version | tr -d ' \n')
+   git checkout 2026.1.1  # Or any supported version from .versions.yml
    pip install -e .
    cd ..
    ```
@@ -99,4 +99,4 @@ To test components locally:
    esphome compile config/minimal-mqtt.yaml
    ```
 
-The GitHub Actions workflow (`.github/workflows/esphome-compile.yml`) automatically runs these on every push.
+The GitHub Actions workflow (`.github/workflows/esphome-compile.yml`) automatically tests against all supported versions on every push to main. See the [workflow results](https://github.com/zet-root/esphome-components/actions/workflows/esphome-compile.yml) for details.
