@@ -589,10 +589,9 @@ def cmd_init(args: argparse.Namespace) -> None:
     ensure_remote(src_dir)
     fetch_upstream_tags(src_dir)
 
-    # Support zet- prefix
-        version = normalize_version(args.esphome_tag)
-        upstream_tag = version
-        full_tag = release_tag_name(version)
+    version = normalize_version(args.esphome_tag)
+    upstream_tag = version
+    full_tag = release_tag_name(version)
 
     verify_upstream_tag(upstream_tag, src_dir)
 
