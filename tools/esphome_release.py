@@ -539,9 +539,9 @@ def cmd_delete(args: argparse.Namespace) -> None:
     delete_branch_and_tag(version, src_dir, push=args.push)
     
     if args.push:
-        print(f"Deleted {tag} from local and remote.")
+        print(f"Deleted {full_tag} from local and remote.")
     else:
-        print(f"Deleted {tag} locally. Use --push to also delete from remote.")
+        print(f"Deleted {full_tag} locally. Use --push to also delete from remote.")
 
 
 def cmd_list(args: argparse.Namespace) -> None:
