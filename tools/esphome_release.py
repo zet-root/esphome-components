@@ -157,6 +157,42 @@ def last_import_commit(src_dir: str) -> str:
         return ""
 
 
+def get_import_commit_version(commit_hash: str, src_dir: str) -> str:
+    """
+    Extract the ESPHome version from an import commit message.
+    Returns the version string (e.g., '2026.2.0') or empty string if not found.
+    """
+    try:
+        msg = run(
+            ["git", "-C", src_dir, "log", "-1", "--format=%B", commit_hash],
+            capture=True,
+        )
+        # Message format: "Import ESPHome 2026.2.0 (mqtt,dht)"
+        if IMPORT_COMMIT_PREFIX in msg:
+            version_part = msg.split(IMPORT_COMMIT_PREFIX)[1].split("(")[0].strip()
+            return version_part
+    except subprocess.CalledProcessError:
+        pass
+    return ""
+
+
+def get_branch_import_version(branch: str, src_dir: str) -> str:
+    """
+    Get the ESPHome version of the latest import commit on a branch.
+    Returns the version string or empty string if not found.
+    """
+    try:
+        commit = run(
+            ["git", "-C", src_dir, "log", "--grep", f"^{IMPORT_COMMIT_PREFIX}", "-n", "1", "--format=%H", branch],
+            capture=True,
+        )
+        if commit:
+            return get_import_commit_version(commit, src_dir)
+    except subprocess.CalledProcessError:
+        pass
+    return ""
+
+
 def import_components_from_upstream(tag: str, comps: List[str], src_dir: str) -> None:
     local_root = os.path.join(src_dir, LOCAL_COMPONENT_ROOT)
     os.makedirs(local_root, exist_ok=True)
@@ -213,16 +249,30 @@ def create_annotated_tag(tag: str, message: str, src_dir: str, force: bool = Fal
 def format_patch_stack(base_commit: str, outdir: str, src_dir: str) -> List[str]:
     """
     Creates patch files for base_commit..HEAD and returns them sorted.
+    Excludes version metadata commits (those with "Update versions" in message).
+    Returns an empty list if there are no custom patches (just metadata commits).
     """
     run(["git", "-C", src_dir, "format-patch", f"{base_commit}..HEAD", "-o", outdir])
     patches = sorted(glob.glob(os.path.join(outdir, "*.patch")))
-    if not patches:
-        die("No patch commits found after the last import commit. Nothing to apply.")
-    return patches
+    
+    # Filter out version metadata commits - they should only be on main, not replayed
+    filtered_patches = []
+    for patch in patches:
+        with open(patch, 'r', encoding="utf-8") as f:
+            content = f.read()
+            # Skip version update commits
+            if "Update versions:" not in content and "Also updates README" not in content:
+                filtered_patches.append(patch)
+    
+    return filtered_patches
 
 
 def apply_patches(patches: List[str], src_dir: str) -> None:
     # Use 3-way apply to reduce conflicts when upstream context shifts slightly.
+    if not patches:
+        # No custom patches to apply - that's okay
+        return
+    
     cmd = ["git", "-C", src_dir, "am", "--3way"] + patches
     try:
         run(cmd)
@@ -256,19 +306,20 @@ def update_readme_badges(src_dir: str) -> None:
 def delete_branch_and_tag(tag: str, src_dir: str, push: bool = False) -> None:
     """Delete a release branch and tag locally and optionally on origin."""
     branch = f"release/zet-{tag}"
+    tagname = f"zet-{tag}"
     
     # Delete local branch
     run(["git", "-C", src_dir, "branch", "-D", branch], check=False)
     
     # Delete local tag
-    run(["git", "-C", src_dir, "tag", "-d", tag], check=False)
+    run(["git", "-C", src_dir, "tag", "-d", tagname], check=False)
     
     if push:
         # Delete remote branch
         run(["git", "-C", src_dir, "push", "origin", "--delete", branch], check=False)
         
         # Delete remote tag
-        run(["git", "-C", src_dir, "push", "origin", "--delete", f"tag {tag}"], check=False)
+        run(["git", "-C", src_dir, "push", "origin", "--delete", "tag", tagname], check=False)
 
 
 def list_releases(src_dir: str) -> None:
@@ -462,53 +513,62 @@ def cmd_release(args: argparse.Namespace) -> None:
     branch = args.branch or f"release/{full_tag}"
     existing_branches = run(["git", "-C", src_dir, "branch", "--list", branch], capture=True)
     if existing_branches.strip():
-        print(f"Branch {branch} already exists, switching to it.")
-        run(["git", "-C", src_dir, "switch", branch])
-        # Assume code and patches are already applied, just tag and push
-        create_annotated_tag(
-            full_tag,
-            f"External components for ESPHome {full_tag}",
-            src_dir,
-            force=args.force_tag,
-        )
-        print("\nRelease already existed on branch:", branch)
-        print("Tag created:", full_tag)
-        if args.push:
-            run(["git", "-C", src_dir, "push", "-u", "origin", branch])
-            run(["git", "-C", src_dir, "push", "origin", f"refs/tags/{full_tag}"])
-            print("Pushed branch + tag.")
-        return
-    else:
-        with tempfile.TemporaryDirectory(prefix="esphome_patches_") as td:
-            patches = format_patch_stack(base, td, src_dir)
-            run(["git", "-C", src_dir, "switch", "-c", branch, base])
-            import_components_from_upstream(upstream_tag, comps, src_dir)
-            commit_import(upstream_tag, comps, src_dir)
-            apply_patches(patches, src_dir)
-        create_annotated_tag(
-            full_tag,
-            f"External components for ESPHome {full_tag}",
-            src_dir,
-            force=args.force_tag,
-        )
-        print("\nRelease created on branch:", branch)
-        print("Tag created:", full_tag)
-        if args.push:
-            run(["git", "-C", src_dir, "push", "-u", "origin", branch])
-            run(["git", "-C", src_dir, "push", "origin", f"refs/tags/{full_tag}"])
-            print("Pushed branch + tag.")
-        
-        # Update .versions.yml on main branch
-        print("\nUpdating .versions.yml on main branch...")
-        run(["git", "-C", src_dir, "switch", "main"])
-        run(["git", "-C", src_dir, "pull", "origin", "main"])
-        update_versions(upstream_tag, src_dir)
-        update_readme_badges(src_dir)
-        run(["git", "-C", src_dir, "add", VERSIONS_FILE, "README.md"])
-        run(["git", "-C", src_dir, "commit", "-m", f"Update versions: add {upstream_tag} as latest\n\nAlso updates README with current badges"])
-        if args.push:
-            run(["git", "-C", src_dir, "push", "origin", "main"])
-            print("Pushed updated versions and README to main.")
+        # Verify the existing branch has the correct upstream version
+        branch_version = get_branch_import_version(branch, src_dir)
+        if branch_version == upstream_tag:
+            print(f"Branch {branch} already exists with correct version, switching to it.")
+            run(["git", "-C", src_dir, "switch", branch])
+            # Code and patches are already applied, just tag and push
+            create_annotated_tag(
+                full_tag,
+                f"External components for ESPHome {full_tag}",
+                src_dir,
+                force=args.force_tag,
+            )
+            print("\nRelease already existed on branch:", branch)
+            print("Tag created:", full_tag)
+            if args.push:
+                run(["git", "-C", src_dir, "push", "-u", "origin", branch])
+                run(["git", "-C", src_dir, "push", "origin", f"refs/tags/{full_tag}"])
+                print("Pushed branch + tag.")
+            return
+        else:
+            # Branch exists but has wrong version - recreate it
+            print(f"Branch {branch} exists but has version {branch_version or 'unknown'}, expected {upstream_tag}")
+            print(f"Deleting and recreating branch {branch}...")
+            run(["git", "-C", src_dir, "branch", "-D", branch], check=False)
+    
+    # Create/recreate the release branch
+    with tempfile.TemporaryDirectory(prefix="esphome_patches_") as td:
+        patches = format_patch_stack(base, td, src_dir)
+        run(["git", "-C", src_dir, "switch", "-c", branch, base])
+        import_components_from_upstream(upstream_tag, comps, src_dir)
+        commit_import(upstream_tag, comps, src_dir)
+        apply_patches(patches, src_dir)
+    create_annotated_tag(
+        full_tag,
+        f"External components for ESPHome {full_tag}",
+        src_dir,
+        force=args.force_tag,
+    )
+    print("\nRelease created on branch:", branch)
+    print("Tag created:", full_tag)
+    if args.push:
+        run(["git", "-C", src_dir, "push", "-u", "origin", branch])
+        run(["git", "-C", src_dir, "push", "origin", f"refs/tags/{full_tag}"])
+        print("Pushed branch + tag.")
+    
+    # Update .versions.yml on main branch
+    print("\nUpdating .versions.yml on main branch...")
+    run(["git", "-C", src_dir, "switch", "main"])
+    run(["git", "-C", src_dir, "pull", "origin", "main"])
+    update_versions(upstream_tag, src_dir)
+    update_readme_badges(src_dir)
+    run(["git", "-C", src_dir, "add", VERSIONS_FILE, "README.md"])
+    run(["git", "-C", src_dir, "commit", "-m", f"Update versions: add {upstream_tag} as latest\n\nAlso updates README with current badges"])
+    if args.push:
+        run(["git", "-C", src_dir, "push", "origin", "main"])
+        print("Pushed updated versions and README to main.")
 
 
 def main() -> None:
