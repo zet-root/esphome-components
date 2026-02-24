@@ -12,6 +12,9 @@ jobs:
   release:
     runs-on: ubuntu-latest
     steps:
+      - name: Debug RELEASE_PUSH_TOKEN
+        run: |
+          if [ -z "${{ secrets.RELEASE_PUSH_TOKEN }}" ]; then echo "TOKEN IS MISSING"; else echo "TOKEN IS PRESENT"; fi
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0  # Fetch all history for git operations
