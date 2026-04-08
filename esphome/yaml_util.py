@@ -754,6 +754,14 @@ class ESPHomeDumper(yaml.SafeDumper):
     def represent_remove(self, value):
         return self.represent_scalar(tag="!remove", value=value.value)
 
+    def represent_include_file(self, value):
+        if value.vars:
+            mapping = {"file": value.file.as_posix(), "vars": value.vars}
+            return self.represent_mapping(
+                tag="!include", mapping=mapping, flow_style=False
+            )
+        return self.represent_scalar(tag="!include", value=value.file.as_posix())
+
     def represent_id(self, value):
         if is_secret(value.id):
             return self.represent_secret(value.id)
@@ -785,3 +793,4 @@ ESPHomeDumper.add_multi_representer(Remove, ESPHomeDumper.represent_remove)
 ESPHomeDumper.add_multi_representer(core.ID, ESPHomeDumper.represent_id)
 ESPHomeDumper.add_multi_representer(uuid.UUID, ESPHomeDumper.represent_stringify)
 ESPHomeDumper.add_multi_representer(Path, ESPHomeDumper.represent_stringify)
+ESPHomeDumper.add_multi_representer(IncludeFile, ESPHomeDumper.represent_include_file)
