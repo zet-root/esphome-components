@@ -1295,6 +1295,21 @@ inline char *int8_to_str(char *buf, int8_t val) {
   return buf;
 }
 
+/// Minimum buffer size for uint32_to_str: 10 digits + null terminator.
+static constexpr size_t UINT32_MAX_STR_SIZE = 11;
+
+/// Write unsigned 32-bit integer to buffer (internal, no size check).
+/// Buffer must have at least 10 bytes free. Returns pointer past last char written.
+char *uint32_to_str_unchecked(char *buf, uint32_t val);
+
+/// Write unsigned 32-bit integer to buffer with compile-time size check.
+/// Null-terminates the output. Returns number of chars written (excluding null).
+inline size_t uint32_to_str(std::span<char, UINT32_MAX_STR_SIZE> buf, uint32_t val) {
+  char *end = uint32_to_str_unchecked(buf.data(), val);
+  *end = '\0';
+  return static_cast<size_t>(end - buf.data());
+}
+
 /// Format byte array as lowercase hex to buffer (base implementation).
 char *format_hex_to(char *buffer, size_t buffer_size, const uint8_t *data, size_t length);
 
