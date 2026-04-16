@@ -6,7 +6,8 @@
 
 | Version | Status |
 |---------|--------|
-| `2026.3.3` | [![2026.3.3 (latest)](https://github.com/zet-root/esphome-components/actions/workflows/esphome-compile.yml/badge.svg?branch=release/zet-2026.3.3)](https://github.com/zet-root/esphome-components/actions/workflows/esphome-compile.yml?query=branch%3Arelease%2Fzet-2026.3.3) |
+| `2026.4.0` | [![2026.4.0 (latest)](https://github.com/zet-root/esphome-components/actions/workflows/esphome-compile.yml/badge.svg?branch=release/zet-2026.4.0)](https://github.com/zet-root/esphome-components/actions/workflows/esphome-compile.yml?query=branch%3Arelease%2Fzet-2026.4.0) |
+| `2026.3.3` | [![2026.3.3](https://github.com/zet-root/esphome-components/actions/workflows/esphome-compile.yml/badge.svg?branch=release/zet-2026.3.3)](https://github.com/zet-root/esphome-components/actions/workflows/esphome-compile.yml?query=branch%3Arelease%2Fzet-2026.3.3) |
 | `2026.3.2` | [![2026.3.2](https://github.com/zet-root/esphome-components/actions/workflows/esphome-compile.yml/badge.svg?branch=release/zet-2026.3.2)](https://github.com/zet-root/esphome-components/actions/workflows/esphome-compile.yml?query=branch%3Arelease%2Fzet-2026.3.2) |
 | `2026.3.1` | [![2026.3.1](https://github.com/zet-root/esphome-components/actions/workflows/esphome-compile.yml/badge.svg?branch=release/zet-2026.3.1)](https://github.com/zet-root/esphome-components/actions/workflows/esphome-compile.yml?query=branch%3Arelease%2Fzet-2026.3.1) |
 | `2026.3.0` | [![2026.3.0](https://github.com/zet-root/esphome-components/actions/workflows/esphome-compile.yml/badge.svg?branch=release/zet-2026.3.0)](https://github.com/zet-root/esphome-components/actions/workflows/esphome-compile.yml?query=branch%3Arelease%2Fzet-2026.3.0) |
