@@ -229,23 +229,50 @@ class Application {
 
   void schedule_dump_config() { this->dump_config_at_ = 0; }
 
-  /// Minimum interval between real arch_feed_wdt() calls. Chosen to keep the
-  /// rate of HAL pokes low while still being small enough that any plausible
-  /// watchdog timeout (seconds) has orders of magnitude of safety margin.
-  static constexpr uint32_t WDT_FEED_INTERVAL_MS = 3;
+  /// Minimum interval between real arch_feed_wdt() calls. Sized so the outer
+  /// feed in Application::loop() is effectively rate-limited across both the
+  /// normal ~62 Hz cadence and worst-case wake-storm scenarios (e.g. external
+  /// stacks like OpenThread posting frequent wake notifications). Component
+  /// loops and scheduler items still feed after every op, so any op exceeding
+  /// this threshold triggers a real feed naturally.
+  /// Safety margins vs. platform watchdog timeouts:
+  ///   - ESP32 task WDT default (5 s): ~16x
+  ///   - ESP8266 soft WDT (~1.6 s):    ~5x  <-- floor case; any future change
+  ///                                             must keep comfortable margin here
+  ///   - ESP8266 HW WDT (~6 s):        ~20x
+  static constexpr uint32_t WDT_FEED_INTERVAL_MS = 300;
 
   /// Feed the task watchdog. Cold entry — callers without a millis()
   /// timestamp in hand. Out of line to keep call sites tiny.
   void feed_wdt();
 
+#ifdef USE_STATUS_LED
+  /// Dispatch interval for the status LED update. Deliberately shorter than
+  /// WDT_FEED_INTERVAL_MS because the status LED error blink has a 250 ms
+  /// period (status_led.cpp:ERROR_PERIOD_MS) and a 150 ms on-window; the
+  /// dispatch cadence must be short enough to render that blink without
+  /// aliasing. Sampling every 100 ms yields an on/off observation inside
+  /// every error period with headroom for the 250 ms warning on-window.
+  static constexpr uint32_t STATUS_LED_DISPATCH_INTERVAL_MS = 100;
+#endif
+
   /// Feed the task watchdog, hot entry. Callers that already have a
   /// millis() timestamp pay only a load + sub + branch on the common
-  /// (no-op) path. The actual arch feed + status LED update live in
-  /// feed_wdt_slow_.
+  /// (no-op) path. The actual arch feed lives in feed_wdt_slow_.
+  /// When USE_STATUS_LED is compiled in, also gates a separate (shorter)
+  /// interval for dispatching status_led so the LED blink pattern stays
+  /// readable even though arch_feed_wdt pokes are now rate-limited at
+  /// WDT_FEED_INTERVAL_MS. The two rate limits are independent so raising
+  /// WDT_FEED_INTERVAL_MS does not distort the LED cadence.
   void ESPHOME_ALWAYS_INLINE feed_wdt_with_time(uint32_t time) {
     if (static_cast<uint32_t>(time - this->last_wdt_feed_) > WDT_FEED_INTERVAL_MS) [[unlikely]] {
       this->feed_wdt_slow_(time);
     }
+#ifdef USE_STATUS_LED
+    if (static_cast<uint32_t>(time - this->last_status_led_service_) > STATUS_LED_DISPATCH_INTERVAL_MS) [[unlikely]] {
+      this->service_status_led_slow_(time);
+    }
+#endif
   }
 
   void reboot();
@@ -410,10 +437,20 @@ class Application {
   /// Caller must ensure dump_config_at_ < components_.size().
   void __attribute__((noinline)) process_dump_config_();
 
-  /// Slow path for feed_wdt(): actually calls arch_feed_wdt(), updates
-  /// last_wdt_feed_, and re-dispatches the status LED. Out of line so the
-  /// inline wrapper stays tiny.
+  /// Slow path for feed_wdt(): actually calls arch_feed_wdt() and updates
+  /// last_wdt_feed_. Out of line so the inline wrapper stays tiny. Does NOT
+  /// touch status_led — that's gated separately via service_status_led_slow_
+  /// because the two rate limits have very different safe ranges (~ seconds
+  /// for WDT, < 250 ms for LED blink rendering).
   void feed_wdt_slow_(uint32_t time);
+
+#ifdef USE_STATUS_LED
+  /// Slow path for the status_led dispatch rate limit. Runs the status_led
+  /// component's loop() based on its state (LOOP / LOOP_DONE with status
+  /// bits set), and updates last_status_led_service_. Out of line to keep
+  /// the feed_wdt_with_time hot path a couple of load+branch sequences.
+  void service_status_led_slow_(uint32_t time);
+#endif
 
   /// Perform a delay while also monitoring socket file descriptors for readiness
 #ifdef USE_HOST
@@ -468,6 +505,10 @@ class Application {
   uint32_t last_loop_{0};
   uint32_t loop_component_start_time_{0};
   uint32_t last_wdt_feed_{0};  // millis() of most recent arch_feed_wdt(); rate-limits feed_wdt() hot path
+#ifdef USE_STATUS_LED
+  // millis() of most recent status_led dispatch; rate-limits independently of last_wdt_feed_
+  uint32_t last_status_led_service_{0};
+#endif
 
 #ifdef USE_HOST
   int max_fd_{-1};  // Highest file descriptor number for select()
