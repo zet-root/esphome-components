@@ -637,7 +637,7 @@ inline void ESPHOME_ALWAYS_INLINE Application::loop() {
   // (advanced by its per-item feeds) or `now` unchanged. We adopt it as `now`
   // so the gate check and WDT feed both reflect actual elapsed time after
   // scheduler dispatch, without an extra millis() call.
-  uint32_t now = this->scheduler_tick_(millis());
+  uint32_t now = this->scheduler_tick_(MillisInternal::get());
   // Guarantee one WDT feed per tick even when the scheduler had nothing to
   // dispatch and the component phase is gated out — covers configs with no
   // looping components and no scheduler work (setup() has its own
