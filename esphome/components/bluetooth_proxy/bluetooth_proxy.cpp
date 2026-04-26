@@ -30,19 +30,6 @@ void BluetoothProxy::setup() {
   this->configured_scan_active_ = this->parent_->get_scan_active();
 
   this->parent_->add_scanner_state_listener(this);
-
-  this->set_interval(100, [this]() {
-    if (api::global_api_server->is_connected() && this->api_connection_ != nullptr) {
-      this->flush_pending_advertisements_();
-      return;
-    }
-    for (uint8_t i = 0; i < this->connection_count_; i++) {
-      auto *connection = this->connections_[i];
-      if (connection->get_address() != 0 && !connection->disconnect_pending()) {
-        connection->disconnect();
-      }
-    }
-  });
 }
 
 void BluetoothProxy::on_scanner_state(esp32_ble_tracker::ScannerState state) {
@@ -131,6 +118,25 @@ void BluetoothProxy::dump_config() {
                 "  Active: %s\n"
                 "  Connections: %d",
                 YESNO(this->active_), this->connection_count_);
+}
+
+void BluetoothProxy::loop() {
+  // Run advertisement flush / connection cleanup every 100ms
+  uint32_t now = App.get_loop_component_start_time();
+  if (now - this->last_advertisement_flush_time_ < 100)
+    return;
+  this->last_advertisement_flush_time_ = now;
+
+  if (api::global_api_server->is_connected() && this->api_connection_ != nullptr) {
+    this->flush_pending_advertisements_();
+    return;
+  }
+  for (uint8_t i = 0; i < this->connection_count_; i++) {
+    auto *connection = this->connections_[i];
+    if (connection->get_address() != 0 && !connection->disconnect_pending()) {
+      connection->disconnect();
+    }
+  }
 }
 
 esp32_ble_tracker::AdvertisementParserType BluetoothProxy::get_advertisement_parser_type() {
