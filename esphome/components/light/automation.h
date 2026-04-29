@@ -86,12 +86,15 @@ template<uint16_t Fields, typename... Ts> class LightControlAction : public Acti
 };
 #undef LIGHT_CONTROL_FIELDS
 
-template<typename... Ts> class DimRelativeAction : public Action<Ts...> {
+template<bool HasTransitionLength, typename... Ts> class DimRelativeAction : public Action<Ts...> {
  public:
   explicit DimRelativeAction(LightState *parent) : parent_(parent) {}
 
   TEMPLATABLE_VALUE(float, relative_brightness)
-  TEMPLATABLE_VALUE(uint32_t, transition_length)
+
+  template<typename V> void set_transition_length(V value) requires(HasTransitionLength) {
+    this->transition_length_ = value;
+  }
 
   void play(const Ts &...x) override {
     auto call = this->parent_->make_call();
@@ -105,7 +108,9 @@ template<typename... Ts> class DimRelativeAction : public Action<Ts...> {
     call.set_state(new_brightness != 0.0f);
     call.set_brightness(new_brightness);
 
-    call.set_transition_length(this->transition_length_.optional_value(x...));
+    if constexpr (HasTransitionLength) {
+      call.set_transition_length(this->transition_length_.optional_value(x...));
+    }
     call.perform();
   }
 
@@ -121,6 +126,9 @@ template<typename... Ts> class DimRelativeAction : public Action<Ts...> {
   float min_brightness_{0.0};
   float max_brightness_{1.0};
   LimitMode limit_mode_{LimitMode::CLAMP};
+  struct NoTransition {};
+  [[no_unique_address]] std::conditional_t<HasTransitionLength, TemplatableFn<uint32_t, Ts...>, NoTransition>
+      transition_length_{};
 };
 
 template<typename... Ts> class LightIsOnCondition : public Condition<Ts...> {
