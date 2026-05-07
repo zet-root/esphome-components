@@ -1,0 +1,117 @@
+name: ESPHome Compile
+
+on:
+  push:
+
+jobs:
+  prepare-matrix:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.versions.outputs.matrix }}
+      latest: ${{ steps.versions.outputs.latest }}
+    steps:
+      - name: Checkout components repo
+        uses: actions/checkout@v4
+
+      - name: Parse supported versions
+        id: versions
+        shell: bash
+        run: |
+          python3 << 'EOF'
+          import json
+          import yaml
+          import os
+          
+          with open('.versions.yml', 'r') as f:
+            data = yaml.safe_load(f)
+          
+          latest = data.get('latest', '')
+          supported = data.get('supported', [])
+          
+          matrix = {
+            'esphome_version': supported,
+            'config': ['config/minimal-dht.yaml', 'config/minimal-mqtt.yaml']
+          }
+          
+          output_file = os.environ['GITHUB_OUTPUT']
+          with open(output_file, 'a') as f:
+            f.write(f'matrix={json.dumps(matrix)}\n')
+            f.write(f'latest={latest}\n')
+          EOF
+
+  compile:
+    needs: prepare-matrix
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJson(needs.prepare-matrix.outputs.matrix) }}
+    env:
+      COMPONENTS_DIR: ${{ github.workspace }}
+    steps:
+      - name: Checkout components repo
+        uses: actions/checkout@v4
+
+      - name: Set ESPHome version
+        shell: bash
+        run: |
+          echo "ESPHOME_VERSION=${{ matrix.esphome_version }}" >> "$GITHUB_ENV"
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install PyYAML
+        shell: bash
+        run: |
+          pip install pyyaml
+
+      - name: Checkout ESPHome
+        shell: bash
+        run: |
+          git clone --filter=blob:none https://github.com/esphome/esphome.git esphome-src
+          cd esphome-src
+          if git rev-parse "refs/tags/${ESPHOME_VERSION}" >/dev/null 2>&1; then
+            git checkout "refs/tags/${ESPHOME_VERSION}"
+          elif git rev-parse "refs/tags/v${ESPHOME_VERSION}" >/dev/null 2>&1; then
+            git checkout "refs/tags/v${ESPHOME_VERSION}"
+          else
+            echo "ESPHome tag ${ESPHOME_VERSION} (or v${ESPHOME_VERSION}) not found" >&2
+            exit 1
+          fi
+
+      - name: Install ESPHome
+        shell: bash
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ./esphome-src
+
+      - name: Prepare config
+        shell: bash
+        run: |
+          mkdir -p ci
+          CONFIG_BASENAME=$(basename "${{ matrix.config }}")
+          CI_CONFIG="ci/${CONFIG_BASENAME}"
+          cp "${{ matrix.config }}" "$CI_CONFIG"
+          # Replace external component source with local path for CI.
+          sed -i "s|source: github://[^ ]*|source: ${COMPONENTS_DIR}/components|g" "$CI_CONFIG"
+          cat > "ci/secrets.yaml" <<'EOF'
+          wifi_ssid: "ci"
+          wifi_password: "ci-password"
+          EOF
+          echo "CI_CONFIG=$CI_CONFIG" >> "$GITHUB_ENV"
+
+      - name: Compile
+        shell: bash
+        run: |
+          esphome compile "$CI_CONFIG"
+
+      - name: Job summary
+        if: always()
+        shell: bash
+        run: |
+          {
+            echo "ESPHome version: $ESPHOME_VERSION"
+            echo "Config: ${{ matrix.config }}"
+            echo "Result: ${{ job.status }}"
+          } >> "$GITHUB_STEP_SUMMARY"
