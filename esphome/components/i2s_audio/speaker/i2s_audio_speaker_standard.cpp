@@ -44,19 +44,23 @@ void I2SAudioSpeaker::run_speaker_task() {
   const uint32_t ring_buffer_duration = std::max(dma_buffers_duration_ms, this->buffer_duration_ms_);
 
   // The DMA buffers may have more bits per sample, so calculate buffer sizes based on the input audio stream info
-  const size_t ring_buffer_size = this->current_stream_info_.ms_to_bytes(ring_buffer_duration);
+  const size_t bytes_per_frame = this->current_stream_info_.frames_to_bytes(1);
+  // Round the ring buffer size down to a multiple of bytes_per_frame so the wrap boundary stays frame-aligned and
+  // avoids unnecessary single-frame splices.
+  const size_t ring_buffer_size =
+      (this->current_stream_info_.ms_to_bytes(ring_buffer_duration) / bytes_per_frame) * bytes_per_frame;
   const uint32_t frames_to_fill_single_dma_buffer = this->current_stream_info_.ms_to_frames(DMA_BUFFER_DURATION_MS);
   const size_t bytes_to_fill_single_dma_buffer =
       this->current_stream_info_.frames_to_bytes(frames_to_fill_single_dma_buffer);
 
   bool successful_setup = false;
-  std::unique_ptr<audio::AudioSourceTransferBuffer> transfer_buffer =
-      audio::AudioSourceTransferBuffer::create(bytes_to_fill_single_dma_buffer);
+  std::unique_ptr<audio::RingBufferAudioSource> audio_source;
 
-  if (transfer_buffer != nullptr) {
+  {
     std::shared_ptr<ring_buffer::RingBuffer> temp_ring_buffer = ring_buffer::RingBuffer::create(ring_buffer_size);
-    if (temp_ring_buffer.use_count() == 1) {
-      transfer_buffer->set_source(temp_ring_buffer);
+    audio_source = audio::RingBufferAudioSource::create(temp_ring_buffer, bytes_to_fill_single_dma_buffer,
+                                                        static_cast<uint8_t>(bytes_per_frame));
+    if (audio_source != nullptr) {
       this->audio_ring_buffer_ = temp_ring_buffer;
       successful_setup = true;
     }
@@ -129,15 +133,15 @@ void I2SAudioSpeaker::run_speaker_task() {
       // The millisecond helper modifies the frames_written variable, so use the microsecond helper and divide by 1000
       uint32_t read_delay = (this->current_stream_info_.frames_to_microseconds(frames_written) / 1000) / 2;
 
-      size_t bytes_read = transfer_buffer->transfer_data_from_source(pdMS_TO_TICKS(read_delay));
-      uint8_t *new_data = transfer_buffer->get_buffer_end() - bytes_read;
+      size_t bytes_read = audio_source->fill(pdMS_TO_TICKS(read_delay), false);
+      uint8_t *new_data = audio_source->mutable_data();
 
       if (bytes_read > 0) {
         this->apply_software_volume_(new_data, bytes_read);
         this->swap_esp32_mono_samples_(new_data, bytes_read);
       }
 
-      if (transfer_buffer->available() == 0) {
+      if (audio_source->available() == 0) {
         if (stop_gracefully && tx_dma_underflow) {
           break;
         }
@@ -150,18 +154,17 @@ void I2SAudioSpeaker::run_speaker_task() {
           i2s_channel_disable(this->tx_handle_);
           const i2s_event_callbacks_t null_callbacks = {.on_sent = nullptr};
           i2s_channel_register_event_callback(this->tx_handle_, &null_callbacks, this);
-          i2s_channel_preload_data(this->tx_handle_, transfer_buffer->get_buffer_start(), transfer_buffer->available(),
-                                   &bytes_written);
+          i2s_channel_preload_data(this->tx_handle_, audio_source->data(), audio_source->available(), &bytes_written);
         } else {
           // Audio is already playing, use regular write to add to the DMA buffers
-          i2s_channel_write(this->tx_handle_, transfer_buffer->get_buffer_start(), transfer_buffer->available(),
-                            &bytes_written, DMA_BUFFER_DURATION_MS);
+          i2s_channel_write(this->tx_handle_, audio_source->data(), audio_source->available(), &bytes_written,
+                            DMA_BUFFER_DURATION_MS);
         }
 
         if (bytes_written > 0) {
           last_data_received_time = millis();
           frames_written += this->current_stream_info_.bytes_to_frames(bytes_written);
-          transfer_buffer->decrease_buffer_length(bytes_written);
+          audio_source->consume(bytes_written);
 
           if (tx_dma_underflow) {
             tx_dma_underflow = false;
@@ -178,9 +181,7 @@ void I2SAudioSpeaker::run_speaker_task() {
 
   xEventGroupSetBits(this->event_group_, SpeakerEventGroupBits::TASK_STOPPING);
 
-  if (transfer_buffer != nullptr) {
-    transfer_buffer.reset();
-  }
+  audio_source.reset();
 
   xEventGroupSetBits(this->event_group_, SpeakerEventGroupBits::TASK_STOPPED);
 
