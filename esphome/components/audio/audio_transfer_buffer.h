@@ -220,6 +220,10 @@ class ConstAudioSourceBuffer : public AudioReadableBuffer {
 /// source transparently stitches frames that straddle the ring buffer's wrap boundary by buffering the
 /// trailing partial frame from one chunk and joining it with the head of the next chunk in a small
 /// internal splice buffer, so callers always see frame-aligned data.
+///
+/// Not thread-safe. The underlying ring_buffer::RingBuffer supports one producer and one consumer
+/// running concurrently, but a given RingBufferAudioSource (its acquired item, splice buffer, and
+/// queued region) must be used by only one thread, and that thread is the ring buffer's consumer.
 class RingBufferAudioSource : public AudioReadableBuffer {
  public:
   /// Maximum supported alignment. Sized to cover 32-bit samples across up to 2 channels (8 bytes).
@@ -242,6 +246,8 @@ class RingBufferAudioSource : public AudioReadableBuffer {
   size_t available() const override { return this->current_available_; }
   void consume(size_t bytes) override;
   bool has_buffered_data() const override;
+  /// pre_shift is ignored: there is no intermediate transfer buffer to compact, so an unconsumed
+  /// exposure stays in place and fill() returns 0 until it is fully consumed.
   size_t fill(TickType_t ticks_to_wait, bool pre_shift) override;
 
   /// @brief Returns a mutable pointer to the currently exposed audio data.
