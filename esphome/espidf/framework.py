@@ -337,16 +337,19 @@ print(".".join([str(x) for x in sys.version_info]))
 
 
 _GITHUB_SHORTHAND_RE = re.compile(
-    r"^github://([a-zA-Z0-9\-]+)/([a-zA-Z0-9\-\._]+?)(?:@([a-zA-Z0-9\-_.\./]+))?$"
+    r"^github://([a-zA-Z0-9\-]+)/([a-zA-Z0-9\-\._]+?)(?:[@#]([a-zA-Z0-9\-_.\./]+))?$"
 )
 _GITHUB_HTTPS_RE = re.compile(
-    r"^(https://github\.com/[a-zA-Z0-9\-]+/[a-zA-Z0-9\-\._]+?\.git)(?:@([a-zA-Z0-9\-_.\./]+))?$"
+    r"^(https://github\.com/[a-zA-Z0-9\-]+/[a-zA-Z0-9\-\._]+?\.git)(?:[@#]([a-zA-Z0-9\-_.\./]+))?$"
 )
 
 
 def _parse_git_source(source_url: str) -> tuple[str, str | None] | None:
     """Return ``(url, ref)`` for ``github://owner/repo[@ref]`` or
-    ``https://github.com/owner/repo.git[@ref]``, else ``None``."""
+    ``https://github.com/owner/repo.git[@ref]``, else ``None``.
+
+    The ref may be separated with ``@`` or ``#``; ``#`` matches the PlatformIO
+    convention used for ``platform_version`` URLs."""
     if m := _GITHUB_SHORTHAND_RE.match(source_url):
         owner, repo, ref = m.group(1), m.group(2), m.group(3)
         # Tolerate a trailing ".git" on the shorthand repo so the
@@ -609,14 +612,16 @@ def _check_esphome_idf_framework_install(
         install = True
         if _check_stamp(env_stamp_file, stamp_info):
             _LOGGER.info("Checking ESP-IDF %s framework installation ...", version)
-            cmd = [
-                get_system_python_path(),
-                str(idf_tools_path),
-                "--non-interactive",
-                "check",
-            ]
-            if run_command_ok(cmd, msg=f"ESP-IDF {version} check", env=env):
+            # Validate via the managed tool-path resolution, not ``idf_tools.py check``:
+            # ``check`` probes tools on the system PATH and aborts if any fail to run (e.g. a
+            # broken Homebrew openocd), which forced a toolchain reinstall on every build.
+            try:
+                _get_idf_tool_paths(framework_path, env)
                 install = False
+            except RuntimeError as err:
+                _LOGGER.debug(
+                    "ESP-IDF %s tool resolution failed, reinstalling: %s", version, err
+                )
 
     # 4. Install framework tools if not installed or needs update
     if install:
