@@ -323,6 +323,9 @@ class DriverChip:
                     - defaults.get(CONF_OFFSET_WIDTH, 0)
                     - defaults.get(CONF_PAD_WIDTH, 0)
                 )
+            elif defaults[CONF_WIDTH] > defaults[CONF_NATIVE_WIDTH]:
+                defaults[CONF_NATIVE_WIDTH] = defaults[CONF_WIDTH]
+
         else:
             native_width = (
                 defaults.get(CONF_WIDTH, 0)
@@ -338,6 +341,8 @@ class DriverChip:
                     - defaults.get(CONF_OFFSET_HEIGHT, 0)
                     - defaults.get(CONF_PAD_HEIGHT, 0)
                 )
+            elif defaults[CONF_HEIGHT] > defaults[CONF_NATIVE_HEIGHT]:
+                defaults[CONF_NATIVE_HEIGHT] = defaults[CONF_HEIGHT]
         else:
             native_height = (
                 defaults.get(CONF_HEIGHT, 0)
