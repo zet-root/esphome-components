@@ -64,7 +64,8 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: "3.11"
+          # esphome 2026.7+ requires Python >=3.12 (was >=3.11 through 2026.6).
+          python-version: "3.12"
 
       - name: Install PyYAML
         shell: bash
