@@ -58,6 +58,7 @@ from esphome.const import (
     PLATFORM_ESP32,
     PLATFORM_ESP8266,
     PLATFORM_LN882X,
+    PLATFORM_RP2040,
     PLATFORM_RTL87XX,
     PlatformFramework,
 )
@@ -325,6 +326,7 @@ CONFIG_SCHEMA = cv.All(
             PLATFORM_ESP32,
             PLATFORM_ESP8266,
             PLATFORM_LN882X,
+            PLATFORM_RP2040,
             PLATFORM_RTL87XX,
         ]
     ),
@@ -350,7 +352,7 @@ async def to_code(config):
     await cg.register_component(var, config)
 
     # Add required libraries for ESP8266 and LibreTiny
-    if CORE.is_esp8266 or CORE.is_libretiny:
+    if CORE.is_esp8266 or CORE.is_libretiny or CORE.is_rp2040:
         # https://github.com/heman/async-mqtt-client/blob/master/library.json
         cg.add_library("heman/AsyncMqttClient-esphome", "2.0.0")
 
