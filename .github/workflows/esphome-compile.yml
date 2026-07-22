@@ -27,9 +27,14 @@ jobs:
           
           latest = data.get('latest', '')
           supported = data.get('supported', [])
-          
+
+          # Components are a single-version upstream snapshot, so they only build
+          # against the esphome version they were imported from. Test that matched
+          # version (this branch's `latest`) rather than the whole history — older
+          # runtimes lack symbols the snapshot uses (e.g. esp32.idf_version) and
+          # can never go green. See README "Build Status by Version".
           matrix = {
-            'esphome_version': supported,
+            'esphome_version': [latest],
             'config': ['config/minimal-dht.yaml', 'config/minimal-mqtt.yaml']
           }
           
