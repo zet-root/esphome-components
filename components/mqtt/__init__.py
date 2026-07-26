@@ -352,7 +352,7 @@ async def to_code(config):
     await cg.register_component(var, config)
 
     # Add required libraries for ESP8266 and LibreTiny
-    if CORE.is_esp8266 or CORE.is_libretiny or CORE.is_rp2040:
+    if CORE.is_esp8266 or CORE.is_libretiny or CORE.is_rp2:
         # https://github.com/heman/async-mqtt-client/blob/master/library.json
         cg.add_library("heman/AsyncMqttClient-esphome", "2.0.0")
 
