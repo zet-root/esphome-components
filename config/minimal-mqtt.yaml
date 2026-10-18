@@ -1,9 +1,8 @@
 esphome:
   name: minimal-mqtt
   friendly_name: Pico MQTT
-  libraries:
-    - heman/AsyncMqttClient-esphome@2.0.0
-    - khoih-prog/AsyncTCP_RP2040W@1.2.0
+  # The mqtt component adds its own (patched) AsyncMqttClient-esphome and
+  # AsyncTCP_RP2040W; do not list the registry versions here.
   platformio_options:
     lib_ldf_mode: deep+
     lib_compat_mode: soft
