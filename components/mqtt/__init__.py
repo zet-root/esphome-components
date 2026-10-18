@@ -1,3 +1,5 @@
+from pathlib import Path
+
 from esphome import automation
 from esphome.automation import Condition
 import esphome.codegen as cg
@@ -352,9 +354,27 @@ async def to_code(config):
     await cg.register_component(var, config)
 
     # Add required libraries for ESP8266 and LibreTiny
-    if CORE.is_esp8266 or CORE.is_libretiny or CORE.is_rp2:
+    if CORE.is_esp8266 or CORE.is_libretiny:
         # https://github.com/heman/async-mqtt-client/blob/master/library.json
         cg.add_library("heman/AsyncMqttClient-esphome", "2.0.0")
+
+    if CORE.is_rp2:
+        # RP2040 / Pico W: patched copies of AsyncMqttClient-esphome 2.0.0 and
+        # AsyncTCP_RP2040W 1.2.0 that hold arduino-pico's lwIP lock around every
+        # packet (see lib/README.md). symlink:// is the PlatformIO spec for a
+        # library that lives in a local directory; the directory is this component's
+        # checkout, so it works for github:// and local external_components alike,
+        # including the Home Assistant ESPHome add-on. Do not list the registry
+        # versions of these two libraries under `esphome: libraries:` as well.
+        lib_dir = Path(__file__).resolve().parent / "lib"
+        cg.add_library(
+            "AsyncMqttClient-esphome",
+            None,
+            f"symlink://{lib_dir / 'AsyncMqttClient-esphome'}",
+        )
+        cg.add_library(
+            "AsyncTCP_RP2040W", None, f"symlink://{lib_dir / 'AsyncTCP_RP2040W'}"
+        )
 
     if CORE.is_esp32:
         # Re-enable ESP-IDF's mqtt component (excluded by default to save compile time)
