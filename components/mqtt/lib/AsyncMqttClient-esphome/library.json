@@ -1,0 +1,18 @@
+{
+  "name": "AsyncMqttClient-esphome",
+  "keywords": "iot, home, automation, async, mqtt, client, esp8266",
+  "description": "zet-root patched for RP2040 (lwIP lock as the packet semaphore, see components/mqtt/lib/README.md). An Arduino for ESP8266 / ESP32 asynchronous MQTT client implementation",
+  "authors":
+  {
+    "name": "Marvin ROGER",
+    "url": "https://www.marvinroger.fr"
+  },
+  "repository":
+  {
+    "type": "git",
+    "url": "https://github.com/HeMan/async-mqtt-client.git"
+  },
+  "version": "2.0.0+zet.1",
+  "frameworks": "arduino",
+  "platforms": ["raspberrypi"]
+}
