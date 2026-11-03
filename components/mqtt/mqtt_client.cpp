@@ -16,6 +16,7 @@
 #include "lwip/dns.h"
 #include "lwip/err.h"
 #include "mqtt_component.h"
+#include "mqtt_topic_match.h"
 
 #ifdef USE_API
 #include "esphome/components/api/api_server.h"
@@ -41,7 +42,11 @@ MQTTClientComponent::MQTTClientComponent() {
   global_mqtt_client = this;
   char mac_addr[MAC_ADDRESS_BUFFER_SIZE];
   get_mac_address_into_buffer(mac_addr);
-  this->credentials_.client_id = make_name_with_suffix(App.get_name(), '-', mac_addr, MAC_ADDRESS_BUFFER_SIZE - 1);
+  const StringRef &name = App.get_name();
+  char client_id[MAX_NAME_WITH_SUFFIX_SIZE];
+  size_t len = make_name_with_suffix_to(client_id, sizeof(client_id), name.c_str(), name.size(), '-', mac_addr,
+                                        MAC_ADDRESS_BUFFER_SIZE - 1);
+  this->credentials_.client_id.assign(client_id, len);
 }
 
 // Connection
@@ -577,63 +582,6 @@ void MQTTClientComponent::disable() {
   this->on_shutdown();
 }
 
-/** Check if the message topic matches the given subscription topic
- *
- * INFO: MQTT spec mandates that topics must not be empty and must be valid NULL-terminated UTF-8 strings.
- *
- * @param message The message topic that was received from the MQTT server. Note: this must not contain
- *                wildcard characters as mandated by the MQTT spec.
- * @param subscription The subscription topic we are matching against.
- * @param is_normal Is this a "normal" topic - Does the message topic not begin with a "$".
- * @param past_separator Are we past the first '/' topic separator.
- * @return true if the subscription topic matches the message topic, false otherwise.
- */
-static bool topic_match(const char *message, const char *subscription, bool is_normal, bool past_separator) {
-  // Reached end of both strings at the same time, this means we have a successful match
-  if (*message == '\0' && *subscription == '\0')
-    return true;
-
-  // Either the message or the subscribe are at the end. This means they don't match.
-  if (*message == '\0' || *subscription == '\0')
-    return false;
-
-  bool do_wildcards = is_normal || past_separator;
-
-  if (*subscription == '+' && do_wildcards) {
-    // single level wildcard
-    // consume + from subscription
-    subscription++;
-    // consume everything from message until '/' found or end of string
-    while (*message != '\0' && *message != '/') {
-      message++;
-    }
-    // after this, both pointers will point to a '/' or to the end of the string
-
-    return topic_match(message, subscription, is_normal, true);
-  }
-
-  if (*subscription == '#' && do_wildcards) {
-    // multilevel wildcard - MQTT mandates that this must be at end of subscribe topic
-    return true;
-  }
-
-  // this handles '/' and normal characters at the same time.
-  if (*message != *subscription)
-    return false;
-
-  past_separator = past_separator || *subscription == '/';
-
-  // consume characters
-  subscription++;
-  message++;
-
-  return topic_match(message, subscription, is_normal, past_separator);
-}
-
-static bool topic_match(const char *message, const char *subscription) {
-  return topic_match(message, subscription, *message != '\0' && *message != '$', false);
-}
-
 void MQTTClientComponent::on_message(const std::string &topic, const std::string &payload) {
 #ifdef USE_ESP8266
   // IMPORTANT: This defer is REQUIRED to prevent stack overflow crashes on ESP8266.
@@ -668,9 +616,7 @@ void MQTTClientComponent::on_message(const std::string &topic, const std::string
 // Setters
 void MQTTClientComponent::disable_log_message() { this->log_message_.topic = ""; }
 bool MQTTClientComponent::is_log_message_enabled() const { return !this->log_message_.topic.empty(); }
-void MQTTClientComponent::set_reboot_timeout(uint32_t reboot_timeout) { this->reboot_timeout_ = reboot_timeout; }
 void MQTTClientComponent::register_mqtt_component(MQTTComponent *component) { this->children_.push_back(component); }
-void MQTTClientComponent::set_log_level(int level) { this->log_level_ = level; }
 void MQTTClientComponent::set_keep_alive(uint16_t keep_alive_s) { this->mqtt_backend_.set_keep_alive(keep_alive_s); }
 void MQTTClientComponent::set_log_message_template(MQTTMessage &&message) { this->log_message_ = std::move(message); }
 const MQTTDiscoveryInfo &MQTTClientComponent::get_discovery_info() const { return this->discovery_info_; }
@@ -683,10 +629,6 @@ void MQTTClientComponent::set_topic_prefix(const std::string &topic_prefix, cons
   }
 }
 const std::string &MQTTClientComponent::get_topic_prefix() const { return this->topic_prefix_; }
-void MQTTClientComponent::set_publish_nan_as_none(bool publish_nan_as_none) {
-  this->publish_nan_as_none_ = publish_nan_as_none;
-}
-bool MQTTClientComponent::is_publish_nan_as_none() const { return this->publish_nan_as_none_; }
 void MQTTClientComponent::disable_birth_message() {
   this->birth_message_.topic = "";
   this->recalculate_availability_();
@@ -766,8 +708,6 @@ MQTTClientComponent *global_mqtt_client = nullptr;  // NOLINT(cppcoreguidelines-
 
 // MQTTMessageTrigger
 MQTTMessageTrigger::MQTTMessageTrigger(std::string topic) : topic_(std::move(topic)) {}
-void MQTTMessageTrigger::set_qos(uint8_t qos) { this->qos_ = qos; }
-void MQTTMessageTrigger::set_payload(const std::string &payload) { this->payload_ = payload; }
 void MQTTMessageTrigger::setup() {
   global_mqtt_client->subscribe(
       this->topic_,
